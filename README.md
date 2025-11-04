@@ -12,7 +12,7 @@ This software is provided "as is" without warranty of any kind, express or impli
 
 # Anova Precision Oven Python SDK
 
-Python SDK for controlling Anova Precision Ovens using the official Anova API(https://developer.anovaculinary.com/docs/devices/wifi/oven-commands).  The goal of this final project is to create an
+Python SDK for controlling Anova Precision Ovens using the official Anova API(https://developer.anovaculinary.com/docs/devices/wifi/oven-commands).  The final goal of this project is to create an
 integration for Home Assistant which leverages this SDK for operation.  The majority of this code was written using Anthropic Claude(https://claude.ai)
 
 ## Installation
