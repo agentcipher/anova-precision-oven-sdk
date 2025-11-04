@@ -179,9 +179,9 @@ Available presets:
 - `roast()` - High heat roasting
 - `steam()` - Steam cooking
 - `sous_vide()` - Precise temperature control
-- `proof_bread()` - Bread proofing
-- `dehydrate()` - Low temp dehydration
 - `bake()` - Conventional baking
+- `dehydrate()` - Bread proofing
+- `toast_v1_oven()` - Replicate the Anova v1 Toast Recipe
 
 ## Error Handling
 
