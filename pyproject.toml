@@ -7,14 +7,26 @@ name = "anova-precision-oven-sdk"
 version = "2025.11.0"
 description = "Python SDK for Anova Precision Oven"
 authors = [
-    { name = "Paul Stark", email = "starkp@gmail.com" }
+    { name = "Paul Stark", email = "cakes-weighty.9z@icloud.com" }
 ]
 maintainers = [
-    { name = "Paul Stark", email = "starkp@gmail.com" }
+    { name = "Paul Stark", email = "cakes-weighty.9z@icloud.com" }
 ]
 license = "GPL-3.0-or-later"
 readme = "README.md"
 requires-python = ">=3.9"
+
+keywords = ["anova", "oven", "smart-kitchen", "home-automation"]
+classifiers = [
+    "Development Status :: 3 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
 
 dependencies = [
     "dynaconf",
@@ -75,5 +87,5 @@ directory = "htmlcov"
 output = "coverage.xml"
 
 [project.urls]
-homepage = "https://github.com/agentcipher/anova-precision-oven-sd"
-repository = "https://github.com/agentcipher/anova-precision-oven-sd"
+homepage = "https://github.com/agentcipher/anova-precision-oven"
+repository = "https://github.com/agentcipher/anova-precision-oven"
