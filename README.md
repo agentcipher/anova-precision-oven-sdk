@@ -1,7 +1,3 @@
-# ============================================================================
-# README.md - Setup Instructions
-# ============================================================================
-
 ## ⚠️ Disclaimer
 
 This software is provided "as is" without warranty of any kind, express or implied. The authors and contributors are not liable for any damages, losses, or issues arising from the use of this software, including but not limited to:
