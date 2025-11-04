@@ -235,18 +235,26 @@ async def test_oven_connection():
 
 ```
 anova-oven-project/
-├── settings.yaml           # Main configuration
-├── .secrets.yaml          # Secrets (gitignored)
-├── .env                   # Environment variables (gitignored)
+├── settings.yaml         # Main configuration
+├── .secrets.yaml         # Secrets (gitignored)
+├── .env                  # Environment variables (gitignored)
 ├── .gitignore            # Git ignore file
-├── requirements.txt       # Python dependencies
-├── pyproject.toml        # Poetry configuration
-├── anova_oven_sdk.py     # SDK code
+├── pyproject.toml        # Project configuration
+├── anova_oven_cli.py     # Anova SDK Command-line Interface(CLI)
 ├── logs/                 # Log files (gitignored)
 │   ├── anova_dev.log
 │   └── anova_prod.log
 └── tests/                # Test files
     ├── __init__.py
-    ├── test_models.py
+    ├── conftest.py
+    └── test_client.py
     └── test_commands.py
+    └── test_exceptions.py
+    └── test_logging_config.py
+    └── test_models.py
+    └── test_oven_part1.py
+    └── test_oven_part2.py
+    └── test_presets.py
+    └── test_settings.py
+    └── test_utils.py
 ```
