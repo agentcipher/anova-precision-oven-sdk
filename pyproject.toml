@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anova-precision-oven-sdk"
+version = "2025.11.0"
+description = "Python SDK for Anova Precision Oven"
+authors = [
+    { name = "Paul Stark", email = "starkp@gmail.com" }
+]
+maintainers = [
+    { name = "Paul Stark", email = "starkp@gmail.com" }
+]
+license = "GPL-3.0-or-later"
+readme = "README.md"
+requires-python = ">=3.9"
+
+dependencies = [
+    "dynaconf",
+    "pydantic",
+    "websockets"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "pytest-xdist>=3.3.0",  # Parallel test execution
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--cov=anova_oven_sdk --cov-fail-under=100 --cov-report html",
+]
+testpaths = [
+    "tests",
+]
+
+# Coverage settings
+[tool.coverage.run]
+source = ["anova_oven_sdk"]
+branch = false
+parallel = true
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
+[project.urls]
+homepage = "https://github.com/agentcipher/anova-precision-oven-sd"
+repository = "https://github.com/agentcipher/anova-precision-oven-sd"

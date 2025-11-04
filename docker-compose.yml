@@ -1,0 +1,10 @@
+services:
+  anova-sdk:
+    build: .
+    environment:
+      - ANOVA_ENV=production
+      - ANOVA_TOKEN=${ANOVA_TOKEN}
+    volumes:
+      - ./logs:/app/logs
+      - ./settings.yaml:/app/settings.yaml
+    command: python anova_oven_cli.py discover
