@@ -4,6 +4,7 @@
 
 # Secrets and environment
 .secrets.yaml
+.secrets.yml
 .secrets.*.yaml
 .env
 .env.local
