@@ -1,0 +1,50 @@
+# recipes.yml
+recipes:
+  - perfect_toast_v1:
+      name: "Perfect Toast (Oven v1)"
+      description: "Multi-stage toast recipe optimized for Anova Oven v1"
+
+      stages:
+        - name: "Stage 1 - Toast"
+          temperature:
+            value: 200
+            temperature_unit: "F"
+            mode: "DRY"
+          timer:
+            seconds: 180
+          fan_speed: 100
+          heating_elements:
+            top: true
+            bottom: false
+            rear: false
+          rack_position: 3
+
+        - name: "Stage 2 - Toast"
+          temperature:
+            value: 482
+            temperature_unit: "F"
+            mode: "WET"
+          steam:
+            steam_percentage: 100
+          timer:
+            seconds: 240
+          heating_elements:
+            top: false
+            bottom: false
+            rear: true
+          fan_speed: 100
+          rack_position: 3
+
+        - name: "Stage 3 - Toast"
+          temperature:
+            value: 77
+            temperature_unit: "F"
+            mode: "DRY"
+          timer:
+            seconds: 60
+          heating_elements:
+            top: false
+            bottom: true
+            rear: true
+          fan_speed: 100
+          rack_position: 3
