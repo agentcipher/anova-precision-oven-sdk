@@ -22,7 +22,6 @@ from .models import (
     RecipeStageConfig
 )
 
-from .presets import CookingPresets
 from .settings import settings
 from .exceptions import (
     AnovaError,
