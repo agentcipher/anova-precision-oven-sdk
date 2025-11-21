@@ -12,6 +12,7 @@ from .models import Device, CookStage, OvenVersion, Probe, Temperature, TimerSta
 from .logging_config import setup_logging
 from .utils import get_masked_token
 
+
 class AnovaOven:
     """
     Main SDK interface for Anova Precision Ovens.
@@ -41,13 +42,18 @@ class AnovaOven:
             await oven.start_cook(devices[0].id, temperature=temp, duration=1800)
     """
 
-    def __init__(self, environment: Optional[str] = None):
+    def __init__(self, token: Optional[str] = None, environment: Optional[str] = None):
         """
         Initialize Anova Oven SDK.
 
         Args:
+            token: API token (required, or set via ANOVA_TOKEN env var)
             environment: Override environment (dev/staging/production)
         """
+        # Set token before environment switching to avoid validation errors
+        if token:
+            settings.set('token', token)
+
         if environment:
             settings.setenv(environment)
 
