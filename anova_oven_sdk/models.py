@@ -10,6 +10,7 @@ from pydantic import (
 from datetime import datetime
 from pathlib import Path
 import yaml
+from .response_models import Nodes
 
 
 class OvenVersion(str, Enum):
@@ -413,6 +414,7 @@ class Device(BaseModel):
     current_temperature: Optional[float] = Field(None, description="Current temp")
     target_temperature: Optional[float] = Field(None, description="Target temp")
     last_update: Optional[datetime] = Field(None, description="Last update time")
+    state_nodes: Optional[Nodes] = Field(None, description="Detailed device state nodes")
 
     @property
     def id(self) -> str:
