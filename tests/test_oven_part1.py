@@ -266,8 +266,9 @@ class TestAnovaOvenHandleMessage:
         )
         oven._devices["test-123"] = device
         
-        # Mock payload (simplified but valid structure)
+        # Mock payload with cookerId and nodes
         payload = {
+            "cookerId": "test-123",
             "version": 1,
             "updatedTimestamp": "2025-11-22T14:59:33Z",
             "systemInfo": {
@@ -326,13 +327,147 @@ class TestAnovaOvenHandleMessage:
         assert device.state_nodes.temperature_bulbs.mode == "dry"
         assert device.last_update is not None
 
+    def test_handle_message_apo_state_missing_nodes(self, mock_settings, mock_client, mock_logger):
+        """Test handling APO state event with missing nodes."""
+        oven = AnovaOven()
+        
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+        
+        # Payload with cookerId but no nodes
+        payload = {
+            "cookerId": "test-123",
+            "state": {"cook": {}} # Extra field allowed
+        }
+        
+        data = {
+            "command": "EVENT_APO_STATE",
+            "payload": payload
+        }
+        
+        oven._handle_message(data)
+        
+        # Should not crash and should update timestamp
+        assert device.last_update is not None
+        # Nodes should remain None
+        assert device.state_nodes is None
+
+    def test_handle_message_apo_state_fallback_single_device(self, mock_settings, mock_client, mock_logger):
+        """Test handling APO state event with fallback to single device."""
+        oven = AnovaOven()
+        
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+        
+        # Payload without cookerId
+        payload = {
+            "version": 1,
+            "updatedTimestamp": "2025-11-22T14:59:33Z",
+            "systemInfo": {
+                "online": True,
+                "hardwareVersion": "120V1",
+                "powerMains": 120,
+                "powerHertz": 60,
+                "firmwareVersion": "2.1.16",
+                "uiHardwareVersion": "UI_ORIGINAL_2",
+                "uiFirmwareVersion": "0.0.0",
+                "triacsFailed": False
+            },
+            "state": {"mode": "idle", "temperatureUnit": "F"},
+            "nodes": {
+                "temperatureBulbs": {
+                    "mode": "dry",
+                    "wet": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+                    "dry": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+                    "dryTop": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+                    "dryBottom": {"current": {"celsius": 20.0, "fahrenheit": 68.0}}
+                },
+                "timer": {"mode": "idle", "initial": 0, "current": 0},
+                "temperatureProbe": {"connected": False},
+                "steamGenerators": {
+                    "mode": "idle",
+                    "relativeHumidity": {"current": 0},
+                    "evaporator": {},
+                    "boiler": {}
+                },
+                "heatingElements": {
+                    "top": {"on": False, "failed": False, "watts": 0},
+                    "bottom": {"on": False, "failed": False, "watts": 0},
+                    "rear": {"on": False, "failed": False, "watts": 0}
+                },
+                "fan": {"speed": 0, "failed": False},
+                "vent": {"open": False},
+                "waterTank": {"empty": False},
+                "door": {"closed": True},
+                "lamp": {"on": False, "failed": False, "preference": "on"},
+                "userInterfaceCircuit": {"communicationFailed": False}
+            }
+        }
+        
+        data = {
+            "command": "EVENT_APO_STATE",
+            "payload": payload
+        }
+        
+        oven._handle_message(data)
+        
+        # Should update the single device
+        assert device.state_nodes is not None
+        assert device.last_update is not None
+
+    def test_handle_message_apo_state_unknown_device(self, mock_settings, mock_client, mock_logger):
+        """Test handling APO state event for unknown device."""
+        oven = AnovaOven()
+        
+        # Add two devices so fallback doesn't apply
+        device1 = Device(cookerId="d1", name="Oven 1", pairedAt="2024-01-01", type=OvenVersion.V2)
+        device2 = Device(cookerId="d2", name="Oven 2", pairedAt="2024-01-01", type=OvenVersion.V2)
+        oven._devices["d1"] = device1
+        oven._devices["d2"] = device2
+        
+        # Payload with unknown ID
+        payload = {
+            "cookerId": "unknown-id",
+            "version": 1,
+            "updatedTimestamp": "2025-11-22T14:59:33Z",
+            "systemInfo": {"online": True, "hardwareVersion": "v1", "powerMains": 120, "powerHertz": 60, "firmwareVersion": "1", "uiHardwareVersion": "1", "uiFirmwareVersion": "1", "triacsFailed": False},
+            "state": {"mode": "idle", "temperatureUnit": "F"}
+        }
+        
+        data = {
+            "command": "EVENT_APO_STATE",
+            "payload": payload
+        }
+        
+        oven._handle_message(data)
+        
+        # Verify warning logged
+        mock_logger.warning.assert_called()
+        call_args = mock_logger.warning.call_args[0][0]
+        assert "unknown device" in call_args
+        
+        # Devices should not be updated (checking one property)
+        assert device1.state_nodes is None
+        assert device2.state_nodes is None
+
     def test_handle_message_apo_state_invalid(self, mock_settings, mock_client, mock_logger):
         """Test handling invalid APO state event."""
         oven = AnovaOven()
         
+        # Completely invalid payload (not a dict)
         data = {
             "command": "EVENT_APO_STATE",
-            "payload": {"invalid": "payload"}
+            "payload": "invalid"
         }
         
         oven._handle_message(data)

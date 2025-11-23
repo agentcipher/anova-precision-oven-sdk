@@ -124,60 +124,34 @@ class AnovaOven:
                 # Validate response structure
                 response = ApoStateResponse.model_validate(data)
                 
-                # Find device and update state
-                # The payload doesn't seem to have cookerId directly, but usually it's associated with the connection
-                # or we might need to match it. However, looking at the payload, it seems to be just the state.
-                # Assuming for now we can't easily map it without ID, but wait, the user said "api_event_payload.json is returned for EVENT_APO_STATE".
-                # If the payload doesn't have ID, maybe we assume it belongs to the connected device?
-                # But we might have multiple devices.
-                # Let's check if we can find the device ID in the payload or if we need to handle it differently.
-                # The provided payload doesn't have cookerId.
-                # But typically these events come for a specific device.
-                # If we have only one device, we can guess.
-                # Or maybe the wrapper has it? The `data` dict is the JSON payload.
-                # If the ID is missing, we might have a problem.
-                # However, usually the client knows which device sent the message if it's a direct connection,
-                # but here we have a single websocket client for potentially multiple devices (via the cloud?).
-                # If it's via cloud, the message usually contains the source.
-                # Let's look at the payload again.
-                # It has `systemInfo`, `state`, `nodes`. No ID.
-                # Maybe I should just log it for now or try to update if I can find a matching device?
-                # Actually, in the previous `_handle_device_list`, we get a list of devices.
-                # If `EVENT_APO_STATE` comes, it must be for a subscribed device.
-                # Let's assume for now we update the first device or we need to find a way to identify it.
-                # Wait, if I look at `oven.py`, `_devices` is a dict.
-                # If I can't identify the device, I can't update it.
-                # BUT, maybe the `data` passed to this handler has more info?
-                # The `WebSocketClient` passes `json.loads(message)`.
-                # If the message itself doesn't have ID, then we are stuck.
-                # Let's assume for this task that we just parse it and maybe log it, or update if we can.
-                # Or maybe the user implies we should just add the capability to parse it.
-                # I will implement the parsing and updating logic, assuming we can find the device.
-                # For now, I'll iterate and see if any device matches (unlikely to match by state).
-                # actually, looking at other integrations, usually the ID is in the wrapper or header.
-                # But here we only get the body.
-                # Let's just implement the parsing and update the device if we can find it, or just log success.
-                # I'll add a TODO about identifying the device.
+                # Try to identify device
+                device_id = response.payload.cooker_id
+                device = None
                 
-                # For the purpose of this task (incorporating the payload), I will parse it.
-                # I'll try to update all devices? No, that's bad.
-                # I'll just log that we received state for now, and if we had a way to know the ID, we'd update.
-                # Wait, if I look at `api_event_payload.json`, it has `systemInfo`. `hardwareVersion` etc.
-                # Maybe I can match by something? No.
-                # Let's just parse it and log it.
-                
-                self.logger.info(f"Received state update (version {response.payload.version})")
-                
-                # If we have a single device, we can update it.
-                if len(self._devices) == 1:
+                if device_id and device_id in self._devices:
+                    device = self._devices[device_id]
+                elif len(self._devices) == 1:
+                    # Fallback to single device if ID not provided or not found (but we have only one)
                     device = list(self._devices.values())[0]
-                    device.state_nodes = response.payload.nodes
-                    device.last_update = datetime.now() # We need to parse the timestamp from payload actually
-                    # response.payload.updated_timestamp is a string, we should parse it.
-                    self.logger.info(f"Updated state for {device.name}")
+                
+                if device:
+                    self.logger.info(f"Received state update for {device.name}")
+                    
+                    # Update nodes if present
+                    if response.payload.nodes:
+                        device.state_nodes = response.payload.nodes
+                        self.logger.info(f"Updated state nodes for {device.name}")
+                    
+                    # Update timestamp
+                    device.last_update = datetime.now()
+                    
+                    # TODO: Handle other state updates (e.g. from 'state' field)
+                else:
+                    self.logger.warning(f"Received state update for unknown device: {device_id}")
                 
             except ValueError as e:
                 self.logger.error(f"Invalid state response: {e}")
+                self.logger.debug(f"Payload: {data}")
 
     def get_device(self, device_id: str) -> Device:
         """Get device by ID."""

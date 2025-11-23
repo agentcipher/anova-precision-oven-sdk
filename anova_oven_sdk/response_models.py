@@ -93,11 +93,11 @@ class SystemInfo(BaseModel):
 
 class OvenState(BaseModel):
     """Oven high-level state."""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra='allow')
 
-    mode: str
-    temperature_unit: str = Field(..., alias="temperatureUnit")
-    processed_command_ids: List[str] = Field(default_factory=list, alias="processedCommandIds")
+    mode: Optional[str] = None
+    temperature_unit: Optional[str] = Field(None, alias="temperatureUnit")
+    processed_command_ids: Optional[List[str]] = Field(default_factory=list, alias="processedCommandIds")
 
 
 class TemperatureBulbState(BaseModel):
@@ -243,13 +243,14 @@ class Nodes(BaseModel):
 
 class ApoStateResponsePayload(BaseModel):
     """Payload for APO state event."""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra='allow')
 
-    version: int
-    updated_timestamp: str = Field(..., alias="updatedTimestamp")
-    system_info: SystemInfo = Field(..., alias="systemInfo")
-    state: OvenState
-    nodes: Nodes
+    cooker_id: Optional[str] = Field(None, alias="cookerId")
+    version: Optional[int] = None
+    updated_timestamp: Optional[str] = Field(None, alias="updatedTimestamp")
+    system_info: Optional[SystemInfo] = Field(None, alias="systemInfo")
+    state: Optional[OvenState] = None
+    nodes: Optional[Nodes] = None
 
 
 class ApoStateResponse(BaseResponse):
