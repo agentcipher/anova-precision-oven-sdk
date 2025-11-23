@@ -14,6 +14,7 @@ from .logging_config import setup_logging
 from .utils import get_masked_token
 from datetime import datetime
 
+
 class AnovaOven:
     """
     Main SDK interface for Anova Precision Ovens.
@@ -107,7 +108,7 @@ class AnovaOven:
             try:
                 # Validate response structure
                 response = DeviceListResponse.model_validate(data)
-                
+
                 # Process each device in the payload
                 for device_data in response.payload:
                     try:
@@ -123,32 +124,73 @@ class AnovaOven:
             try:
                 # Validate response structure
                 response = ApoStateResponse.model_validate(data)
-                
+
+                # Get raw payload for nested structure handling
+                raw_payload = data.get('payload', {})
+
                 # Try to identify device
                 device_id = response.payload.cooker_id
                 device = None
-                
+
                 if device_id and device_id in self._devices:
                     device = self._devices[device_id]
                 elif len(self._devices) == 1:
                     # Fallback to single device if ID not provided or not found (but we have only one)
                     device = list(self._devices.values())[0]
-                
+
                 if device:
                     self.logger.info(f"Received state update for {device.name}")
-                    
-                    # Update nodes if present
-                    if response.payload.nodes:
-                        device.state_nodes = response.payload.nodes
-                        self.logger.info(f"Updated state nodes for {device.name}")
-                    
+
+                    # For v1 ovens, data is nested under 'state' key
+                    nested_state = raw_payload.get('state', {})
+
+                    # Update nodes - check both nested and top-level locations
+                    if 'nodes' in nested_state:
+                        device.nodes = response.payload.nodes or ApoStateResponse.model_validate(
+                            {'command': 'EVENT_APO_STATE', 'payload': nested_state}
+                        ).payload.nodes
+                        self.logger.info(f"Updated nodes for {device.name}")
+                    elif response.payload.nodes:
+                        device.nodes = response.payload.nodes
+                        self.logger.info(f"Updated nodes for {device.name}")
+
+                    # Update state_info (mode, temperatureUnit, etc.)
+                    if 'state' in nested_state:
+                        from .response_models import OvenState
+                        device.state_info = OvenState.model_validate(nested_state['state'])
+
+                        # Update device.state enum based on mode
+                        mode_str = nested_state['state'].get('mode')
+                        if mode_str:
+                            from .models import DeviceState
+                            mode = mode_str.lower()
+                            state_mapping = {
+                                "cook": DeviceState.COOKING,
+                                "cooking": DeviceState.COOKING,
+                                "preheat": DeviceState.PREHEATING,
+                                "preheating": DeviceState.PREHEATING,
+                                "idle": DeviceState.IDLE,
+                                "paused": DeviceState.PAUSED,
+                                "completed": DeviceState.COMPLETED,
+                                "error": DeviceState.ERROR,
+                            }
+                            device.state = state_mapping.get(mode, DeviceState.IDLE)
+                            self.logger.debug(f"Updated device state to {device.state} (from mode: {mode})")
+                    elif response.payload.state:
+                        device.state_info = response.payload.state
+
+                    # Update system_info
+                    if 'systemInfo' in nested_state:
+                        from .response_models import SystemInfo
+                        device.system_info = SystemInfo.model_validate(nested_state['systemInfo'])
+                    elif response.payload.system_info:
+                        device.system_info = response.payload.system_info
+
                     # Update timestamp
                     device.last_update = datetime.now()
-                    
-                    # TODO: Handle other state updates (e.g. from 'state' field)
                 else:
                     self.logger.warning(f"Received state update for unknown device: {device_id}")
-                
+
             except ValueError as e:
                 self.logger.error(f"Invalid state response: {e}")
                 self.logger.debug(f"Payload: {data}")

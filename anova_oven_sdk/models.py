@@ -1,6 +1,8 @@
 # ============================================================================
 # Pydantic Models
 # ============================================================================
+from __future__ import annotations
+
 from enum import Enum
 from typing import Optional, Dict, Any, Union, List
 from pydantic import (
@@ -10,7 +12,7 @@ from pydantic import (
 from datetime import datetime
 from pathlib import Path
 import yaml
-from .response_models import Nodes
+from .response_models import Nodes, OvenState, SystemInfo
 
 
 class OvenVersion(str, Enum):
@@ -414,7 +416,11 @@ class Device(BaseModel):
     current_temperature: Optional[float] = Field(None, description="Current temp")
     target_temperature: Optional[float] = Field(None, description="Target temp")
     last_update: Optional[datetime] = Field(None, description="Last update time")
-    state_nodes: Optional[Nodes] = Field(None, description="Detailed device state nodes")
+
+    # State data from WebSocket updates
+    nodes: Optional['Nodes'] = Field(None, description="Detailed device state nodes")
+    state_info: Optional['OvenState'] = Field(None, description="High-level state info (mode, temperature unit)")
+    system_info: Optional['SystemInfo'] = Field(None, description="System information (firmware, hardware versions)")
 
     @property
     def id(self) -> str:
