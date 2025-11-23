@@ -123,6 +123,7 @@ class AnovaOven:
         elif command == 'EVENT_APO_STATE':
             try:
                 # Validate response structure
+                self.logger.debug(f"Full STATE payload: {data}")
                 response = ApoStateResponse.model_validate(data)
 
                 # Get raw payload for nested structure handling
