@@ -162,10 +162,10 @@ class TestAnovaOvenDeviceDiscovery:
         assert len(devices) == 2
 
 
-class TestAnovaOvenHandleDeviceList:
-    """Test device list handling."""
+class TestAnovaOvenHandleMessage:
+    """Test message handling."""
 
-    def test_handle_device_list_valid(self, mock_settings, mock_client, mock_logger):
+    def test_handle_message_device_list_valid(self, mock_settings, mock_client, mock_logger):
         """Test handling valid device list."""
         oven = AnovaOven()
         
@@ -179,22 +179,22 @@ class TestAnovaOvenHandleDeviceList:
             }]
         }
         
-        oven._handle_device_list(data)
+        oven._handle_message(data)
         
         assert "test-123" in oven._devices
         assert oven._devices["test-123"].name == "My Oven"
 
-    def test_handle_device_list_wrong_command(self, mock_settings, mock_client, mock_logger):
+    def test_handle_message_wrong_command(self, mock_settings, mock_client, mock_logger):
         """Test handling wrong command type."""
         oven = AnovaOven()
         
         data = {"command": "OTHER_COMMAND", "payload": []}
         
-        oven._handle_device_list(data)
+        oven._handle_message(data)
         
         assert len(oven._devices) == 0
 
-    def test_handle_device_list_validation_error(self, mock_settings, mock_client, mock_logger):
+    def test_handle_message_device_list_validation_error(self, mock_settings, mock_client, mock_logger):
         """Test handling device with validation error."""
         oven = AnovaOven()
         
@@ -206,11 +206,11 @@ class TestAnovaOvenHandleDeviceList:
             }]
         }
         
-        oven._handle_device_list(data)
+        oven._handle_message(data)
         
         assert len(oven._devices) == 0
 
-    def test_handle_device_list_multiple_devices(self, mock_settings, mock_client, mock_logger):
+    def test_handle_message_device_list_multiple_devices(self, mock_settings, mock_client, mock_logger):
         """Test handling multiple devices."""
         oven = AnovaOven()
         
@@ -232,11 +232,11 @@ class TestAnovaOvenHandleDeviceList:
             ]
         }
         
-        oven._handle_device_list(data)
+        oven._handle_message(data)
         
         assert len(oven._devices) == 2
 
-    def test_handle_device_list_invalid_response_structure(self, mock_settings, mock_client, mock_logger):
+    def test_handle_message_device_list_invalid_response_structure(self, mock_settings, mock_client, mock_logger):
         """Test handling device list with invalid response structure."""
         oven = AnovaOven()
         
@@ -246,12 +246,103 @@ class TestAnovaOvenHandleDeviceList:
             "payload": "not-a-list"
         }
         
-        oven._handle_device_list(data)
+        oven._handle_message(data)
         
         # Verify that the error was logged
         mock_logger.error.assert_called()
         call_args = mock_logger.error.call_args[0][0]
         assert "Invalid device list response" in call_args
+
+    def test_handle_message_apo_state_valid(self, mock_settings, mock_client, mock_logger):
+        """Test handling valid APO state event."""
+        oven = AnovaOven()
+        
+        # Add a device
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+        
+        # Mock payload (simplified but valid structure)
+        payload = {
+            "version": 1,
+            "updatedTimestamp": "2025-11-22T14:59:33Z",
+            "systemInfo": {
+                "online": True,
+                "hardwareVersion": "120V1",
+                "powerMains": 120,
+                "powerHertz": 60,
+                "firmwareVersion": "2.1.16",
+                "uiHardwareVersion": "UI_ORIGINAL_2",
+                "uiFirmwareVersion": "0.0.0",
+                "triacsFailed": False
+            },
+            "state": {
+                "mode": "idle",
+                "temperatureUnit": "F",
+                "processedCommandIds": []
+            },
+            "nodes": {
+                "temperatureBulbs": {
+                    "mode": "dry",
+                    "wet": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+                    "dry": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+                    "dryTop": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+                    "dryBottom": {"current": {"celsius": 20.0, "fahrenheit": 68.0}}
+                },
+                "timer": {"mode": "idle", "initial": 0, "current": 0},
+                "temperatureProbe": {"connected": False},
+                "steamGenerators": {
+                    "mode": "idle",
+                    "relativeHumidity": {"current": 0},
+                    "evaporator": {},
+                    "boiler": {}
+                },
+                "heatingElements": {
+                    "top": {"on": False, "failed": False, "watts": 0},
+                    "bottom": {"on": False, "failed": False, "watts": 0},
+                    "rear": {"on": False, "failed": False, "watts": 0}
+                },
+                "fan": {"speed": 0, "failed": False},
+                "vent": {"open": False},
+                "waterTank": {"empty": False},
+                "door": {"closed": True},
+                "lamp": {"on": False, "failed": False, "preference": "on"},
+                "userInterfaceCircuit": {"communicationFailed": False}
+            }
+        }
+        
+        data = {
+            "command": "EVENT_APO_STATE",
+            "payload": payload
+        }
+        
+        oven._handle_message(data)
+        
+        assert device.state_nodes is not None
+        assert device.state_nodes.temperature_bulbs.mode == "dry"
+        assert device.last_update is not None
+
+    def test_handle_message_apo_state_invalid(self, mock_settings, mock_client, mock_logger):
+        """Test handling invalid APO state event."""
+        oven = AnovaOven()
+        
+        data = {
+            "command": "EVENT_APO_STATE",
+            "payload": {"invalid": "payload"}
+        }
+        
+        oven._handle_message(data)
+        
+        # Verify that the error was logged
+        mock_logger.error.assert_called()
+        call_args = mock_logger.error.call_args[0][0]
+        assert "Invalid state response" in call_args
+
+
 class TestAnovaOvenGetDevice:
     """Test get_device method."""
 
