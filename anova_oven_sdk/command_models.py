@@ -2,7 +2,7 @@
 # Command Models - Pydantic Models for Outbound API Commands
 # ============================================================================
 
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from enum import Enum
 
@@ -23,13 +23,7 @@ class BaseCommand(BaseModel):
     type: str = Field(..., description="Command type")
 
 
-class WebSocketCommand(BaseModel):
-    """Wrapper for WebSocket command with proper structure."""
-    model_config = ConfigDict(populate_by_name=True)
 
-    command: str = Field(..., description="Command type")
-    request_id: str = Field(..., serialization_alias="requestId", description="Unique request ID")
-    payload: BaseCommand = Field(..., description="Command payload")
 
 
 # ============================================================================
@@ -113,3 +107,12 @@ class TemperatureUnitCommand(BaseCommand):
     """Set temperature unit command."""
     type: str = Field(default=CommandType.SET_TEMPERATURE_UNIT.value, description="Command type")
     payload: TemperatureUnitCommandPayload = Field(..., description="Temperature unit configuration")
+
+
+class WebSocketCommand(BaseModel):
+    """Wrapper for WebSocket command with proper structure."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    command: str = Field(..., description="Command type")
+    request_id: str = Field(..., serialization_alias="requestId", description="Unique request ID")
+    payload: Union[StartCommand, StopCommand, ProbeCommand, TemperatureUnitCommand] = Field(..., description="Command payload")
