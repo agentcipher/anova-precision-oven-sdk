@@ -9,7 +9,7 @@ from .commands import CommandBuilder
 from .client import WebSocketClient
 from .models import Device, CookStage, OvenVersion, Probe, Temperature, TimerStartType, Timer, HeatingElements, \
     TemperatureMode, ensure_temperature
-from .response_models import DeviceListResponse, ApoStateResponse
+from .response_models import DeviceListResponse, ApoStateResponse, CommandResponse, ErrorResponse
 from .logging_config import setup_logging
 from .utils import get_masked_token
 from datetime import datetime
@@ -194,6 +194,30 @@ class AnovaOven:
             except ValueError as e:
                 self.logger.error(f"Invalid state response: {e}")
                 self.logger.debug(f"Payload: {data}")
+
+        elif command == 'RESPONSE':
+            try:
+                response = CommandResponse.model_validate(data)
+                if response.payload:
+                    status = response.payload.status
+                    msg = response.payload.message
+                    if status == "success":
+                        self.logger.debug(f"Command success: {msg}")
+                    else:
+                        self.logger.warning(f"Command response: {status} - {msg}")
+            except ValueError as e:
+                self.logger.error(f"Invalid command response: {e}")
+
+        elif command == 'ERROR':
+            try:
+                response = ErrorResponse.model_validate(data)
+                error_msg = response.payload.error_message
+                error_code = response.payload.error_code
+                self.logger.error(f"Server Error [{error_code}]: {error_msg}")
+                if response.payload.details:
+                    self.logger.debug(f"Error details: {response.payload.details}")
+            except ValueError as e:
+                self.logger.error(f"Invalid error response: {e}")
 
     def get_device(self, device_id: str) -> Device:
         """Get device by ID."""

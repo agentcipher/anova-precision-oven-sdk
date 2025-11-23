@@ -140,6 +140,8 @@ class CommandBuilder:
                 }
             }
 
+
+
             if stage.steam:
                 stage_data["do"]["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True,
                                                                              mode='json')
