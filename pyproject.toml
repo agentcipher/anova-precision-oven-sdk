@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anova-precision-oven-sdk"
-version = "2025.11.3"
+version = "2025.11.4"
 description = "Python SDK for Anova Precision Oven"
 authors = [
     { name = "Paul Stark", email = "cakes-weighty.9z@icloud.com" }
