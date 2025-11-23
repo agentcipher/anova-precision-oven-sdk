@@ -123,7 +123,6 @@ class AnovaOven:
         elif command == 'EVENT_APO_STATE':
             try:
                 # Validate response structure
-                self.logger.debug(f"Full STATE payload: {data}")
                 response = ApoStateResponse.model_validate(data)
 
                 # Get raw payload for nested structure handling
@@ -286,6 +285,10 @@ class AnovaOven:
         payload = self.command_builder.build_start_command(
             device_id, stages, device.oven_version
         )
+
+        # Log the full command payload for debugging
+        import json
+        self.logger.debug(f"CMD_APO_START payload:\n{json.dumps(payload, indent=2, default=str)}")
 
         await self.client.send_command("CMD_APO_START", payload)
 
