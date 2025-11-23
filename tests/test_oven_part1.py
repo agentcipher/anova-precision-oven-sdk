@@ -236,7 +236,22 @@ class TestAnovaOvenHandleDeviceList:
         
         assert len(oven._devices) == 2
 
-
+    def test_handle_device_list_invalid_response_structure(self, mock_settings, mock_client, mock_logger):
+        """Test handling device list with invalid response structure."""
+        oven = AnovaOven()
+        
+        # Invalid payload type (should be a list)
+        data = {
+            "command": "EVENT_APO_WIFI_LIST",
+            "payload": "not-a-list"
+        }
+        
+        oven._handle_device_list(data)
+        
+        # Verify that the error was logged
+        mock_logger.error.assert_called()
+        call_args = mock_logger.error.call_args[0][0]
+        assert "Invalid device list response" in call_args
 class TestAnovaOvenGetDevice:
     """Test get_device method."""
 
