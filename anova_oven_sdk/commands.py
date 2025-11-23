@@ -46,7 +46,7 @@ class CommandBuilder:
                     "mode": stage.mode.value,
                     stage.mode.value: {"setpoint": stage.temperature.model_dump(exclude_none=True)}
                 },
-                "heatingElements": stage.heating_elements.model_dump(by_alias=True, exclude_none=True, mode='json'),
+                "heatingElements": stage.heating_elements.model_dump(mode='json'),
                 "fan": {"speed": stage.fan_speed},
                 "vent": {"open": stage.vent_open},
                 "rackPosition": stage.rack_position,
@@ -105,7 +105,7 @@ class CommandBuilder:
                 "do": {
                     "type": "cook",
                     "fan": {"speed": stage.fan_speed},
-                    "heatingElements": stage.heating_elements.model_dump(by_alias=True, exclude_none=True, mode='json'),
+                    "heatingElements": stage.heating_elements.model_dump(mode='json'),
                     "exhaustVent": {
                         "state": VentState.OPEN.value if stage.vent_open else VentState.CLOSED.value
                     },

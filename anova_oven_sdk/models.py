@@ -6,7 +6,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Optional, Dict, Any, Union, List
 from pydantic import (
-    BaseModel, Field, field_validator, model_validator,
+    BaseModel, Field, field_validator, model_validator, model_serializer,
     ConfigDict
 )
 from datetime import datetime
@@ -289,13 +289,18 @@ class HeatingElements(BaseModel):
             raise ValueError("All three heating elements cannot be enabled simultaneously")
         return self
 
-    def to_dict(self) -> Dict[str, Dict[str, bool]]:
-        """Convert to API format (backward compatibility wrapper)."""
+    @model_serializer(mode='wrap', when_used='json')
+    def _serialize_for_api(self, serializer, info):
+        """Serialize in API format when mode='json'."""
         return {
             "top": {"on": self.top},
             "bottom": {"on": self.bottom},
             "rear": {"on": self.rear}
         }
+
+    def to_dict(self) -> Dict[str, Dict[str, bool]]:
+        """Convert to API format (backward compatibility wrapper)."""
+        return self.model_dump(mode='json')
 
 
 class SteamSettings(BaseModel):
