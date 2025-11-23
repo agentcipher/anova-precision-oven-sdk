@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from anova_oven_sdk.commands import CommandBuilder
 from anova_oven_sdk.models import (
@@ -283,7 +284,7 @@ class TestCommandBuilder:
 
     def test_build_temperature_unit_command_invalid(self):
         """Test building temperature unit command with invalid unit."""
-        with pytest.raises(ValueError, match="Unit must be 'C' or 'F'"):
+        with pytest.raises(ValidationError, match="Temperature unit must be 'C' or 'F'"):
             CommandBuilder.build_temperature_unit_command("device-123", "K")
 
     def test_static_methods(self):

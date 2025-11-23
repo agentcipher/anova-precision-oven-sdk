@@ -5,6 +5,11 @@
 from typing import List, Dict, Any
 
 from .models import CookStage, OvenVersion, TimerStartType, VentState, Temperature
+from .command_models import (
+    StartCommand, StartCommandPayloadV1, StartCommandPayloadV2,
+    StopCommand, ProbeCommand, ProbeCommandPayload,
+    TemperatureUnitCommand, TemperatureUnitCommandPayload
+)
 from .utils import generate_uuid
 
 
@@ -39,9 +44,9 @@ class CommandBuilder:
                 "userActionRequired": False,
                 "temperatureBulbs": {
                     "mode": stage.mode.value,
-                    stage.mode.value: {"setpoint": stage.temperature.to_dict()}
+                    stage.mode.value: {"setpoint": stage.temperature.model_dump(exclude_none=True)}
                 },
-                "heatingElements": stage.heating_elements.to_dict(),
+                "heatingElements": stage.heating_elements.model_dump(by_alias=True, exclude_none=True, mode='json'),
                 "fan": {"speed": stage.fan_speed},
                 "vent": {"open": stage.vent_open},
                 "rackPosition": stage.rack_position,
@@ -49,7 +54,7 @@ class CommandBuilder:
             }
 
             if stage.steam:
-                preheat["steamGenerators"] = stage.steam.to_dict()
+                preheat["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True, mode='json')
 
             stage_payloads.append(preheat)
 
@@ -63,7 +68,7 @@ class CommandBuilder:
             })
 
             if stage.timer:
-                cook["timer"] = stage.timer.to_dict()
+                cook["timer"] = stage.timer.model_dump(by_alias=True, exclude_none=True, mode='json')
                 cook["timerAdded"] = True
                 cook["timerStartOnDetect"] = stage.timer.start_type != TimerStartType.IMMEDIATELY
             else:
@@ -72,20 +77,18 @@ class CommandBuilder:
 
             if stage.probe:
                 cook["probeAdded"] = True
-                cook["probe"] = stage.probe.to_dict()
+                cook["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
             else:
                 cook["probeAdded"] = False
 
             stage_payloads.append(cook)
 
-        return {
-            "id": device_id,
-            "type": "CMD_APO_START",
-            "payload": {
-                "cookId": cook_id,
-                "stages": stage_payloads
-            }
-        }
+        payload = StartCommandPayloadV1(
+            cook_id=cook_id,
+            stages=stage_payloads
+        )
+        command = StartCommand(id=device_id, payload=payload)
+        return command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def _build_v2_start(device_id: str, stages: List[CookStage]) -> Dict[str, Any]:
@@ -102,13 +105,13 @@ class CommandBuilder:
                 "do": {
                     "type": "cook",
                     "fan": {"speed": stage.fan_speed},
-                    "heatingElements": stage.heating_elements.to_dict(),
+                    "heatingElements": stage.heating_elements.model_dump(by_alias=True, exclude_none=True, mode='json'),
                     "exhaustVent": {
                         "state": VentState.OPEN.value if stage.vent_open else VentState.CLOSED.value
                     },
                     "temperatureBulbs": {
                         "mode": stage.mode.value,
-                        stage.mode.value: {"setpoint": stage.temperature.to_dict(include_fahrenheit=False)}
+                        stage.mode.value: {"setpoint": stage.temperature.model_dump(exclude={'fahrenheit'}, exclude_none=True)}
                     }
                 },
                 "entry": {
@@ -124,53 +127,46 @@ class CommandBuilder:
             }
 
             if stage.steam:
-                stage_data["do"]["steamGenerators"] = stage.steam.to_dict()
+                stage_data["do"]["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True, mode='json')
 
             if stage.timer:
-                stage_data["do"]["timer"] = stage.timer.to_dict()
+                stage_data["do"]["timer"] = stage.timer.model_dump(by_alias=True, exclude_none=True, mode='json')
                 stage_data["exit"]["conditions"]["and"]["nodes.timer.mode"] = {"=": "completed"}
 
             if stage.probe:
-                stage_data["do"]["probe"] = stage.probe.to_dict()
+                stage_data["do"]["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
 
             stage_payloads.append(stage_data)
 
-        return {
-            "id": device_id,
-            "type": "CMD_APO_START",
-            "payload": {
-                "stages": stage_payloads,
-                "cookId": cook_id,
-                "cookerId": device_id,
-                "cookableId": "",
-                "title": "",
-                "type": OvenVersion.V2.value,
-                "originSource": "api",
-                "cookableType": "manual"
-            }
-        }
+        payload = StartCommandPayloadV2(
+            stages=stage_payloads,
+            cook_id=cook_id,
+            cooker_id=device_id,
+            cookable_id="",
+            title="",
+            type=OvenVersion.V2.value,
+            origin_source="api",
+            cookable_type="manual"
+        )
+        command = StartCommand(id=device_id, payload=payload)
+        return command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def build_stop_command(device_id: str) -> Dict[str, Any]:
         """Build stop command."""
-        return {"id": device_id, "type": "CMD_APO_STOP"}
+        command = StopCommand(id=device_id)
+        return command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def build_probe_command(device_id: str, temp: Temperature) -> Dict[str, Any]:
         """Build probe command."""
-        return {
-            "id": device_id,
-            "type": "CMD_APO_SET_PROBE",
-            "payload": {"setpoint": temp.to_dict()}
-        }
+        payload = ProbeCommandPayload(setpoint=temp.model_dump(exclude_none=True))
+        command = ProbeCommand(id=device_id, payload=payload)
+        return command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def build_temperature_unit_command(device_id: str, unit: str) -> Dict[str, Any]:
         """Build temperature unit command."""
-        if unit not in ["C", "F"]:
-            raise ValueError("Unit must be 'C' or 'F'")
-        return {
-            "id": device_id,
-            "type": "CMD_APO_SET_TEMPERATURE_UNIT",
-            "payload": {"temperatureUnit": unit}
-        }
+        payload = TemperatureUnitCommandPayload(temperature_unit=unit)
+        command = TemperatureUnitCommand(id=device_id, payload=payload)
+        return command.model_dump(by_alias=True, exclude_none=True)

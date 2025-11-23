@@ -114,7 +114,7 @@ class Temperature(BaseModel):
         return cls(fahrenheit=fahrenheit)
 
     def to_dict(self, include_fahrenheit: bool = True) -> Dict[str, float]:
-        """Convert to API format."""
+        """Convert to API format (backward compatibility wrapper)."""
         result = {"celsius": self.celsius}
         if include_fahrenheit:
             result["fahrenheit"] = self.fahrenheit
@@ -287,7 +287,7 @@ class HeatingElements(BaseModel):
         return self
 
     def to_dict(self) -> Dict[str, Dict[str, bool]]:
-        """Convert to API format."""
+        """Convert to API format (backward compatibility wrapper)."""
         return {
             "top": {"on": self.top},
             "bottom": {"on": self.bottom},
@@ -301,10 +301,12 @@ class SteamSettings(BaseModel):
 
     mode: SteamMode = Field(SteamMode.IDLE, description="Steam mode")
     relative_humidity: Optional[float] = Field(
-        None, ge=0, le=100, description="Relative humidity percentage"
+        None, ge=0, le=100, description="Relative humidity percentage",
+        serialization_alias="relativeHumidity"
     )
     steam_percentage: Optional[float] = Field(
-        None, ge=0, le=100, description="Steam percentage"
+        None, ge=0, le=100, description="Steam percentage",
+        serialization_alias="steamPercentage"
     )
 
     @model_validator(mode='after')
@@ -319,7 +321,7 @@ class SteamSettings(BaseModel):
         return self
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to API format."""
+        """Convert to API format (backward compatibility wrapper)."""
         result = {"mode": self.mode.value}
         if self.mode == SteamMode.RELATIVE_HUMIDITY and self.relative_humidity is not None:
             result["relativeHumidity"] = {"setpoint": self.relative_humidity}
@@ -334,11 +336,12 @@ class Timer(BaseModel):
 
     initial: int = Field(..., ge=0, description="Timer duration in seconds")
     start_type: TimerStartType = Field(
-        TimerStartType.IMMEDIATELY, description="When to start timer"
+        TimerStartType.IMMEDIATELY, description="When to start timer",
+        serialization_alias="startType"
     )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to API format."""
+        """Convert to API format (backward compatibility wrapper)."""
         result = {"initial": self.initial}
         if self.start_type != TimerStartType.IMMEDIATELY:
             result["startType"] = self.start_type.value
@@ -359,8 +362,8 @@ class Probe(BaseModel):
         return v
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to API format."""
-        return {"setpoint": self.setpoint.to_dict()}
+        """Convert to API format (backward compatibility wrapper)."""
+        return {"setpoint": self.setpoint.model_dump(exclude_none=True)}
 
 
 class CookStage(BaseModel):
@@ -809,7 +812,7 @@ class RecipeLibrary(BaseModel):
             file_path: Output file path
         """
         recipes_list = [
-            {recipe_id: recipe.to_dict()}
+            {recipe_id: recipe.model_dump(by_alias=True, exclude_none=True, mode='json')}
             for recipe_id, recipe in self.recipes.items()
         ]
 

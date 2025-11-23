@@ -9,6 +9,7 @@ from .commands import CommandBuilder
 from .client import WebSocketClient
 from .models import Device, CookStage, OvenVersion, Probe, Temperature, TimerStartType, Timer, HeatingElements, \
     TemperatureMode, ensure_temperature
+from .response_models import DeviceListResponse
 from .logging_config import setup_logging
 from .utils import get_masked_token
 
@@ -100,14 +101,20 @@ class AnovaOven:
     def _handle_device_list(self, data: Dict[str, Any]) -> None:
         """Handle device discovery messages."""
         if data.get('command') == 'EVENT_APO_WIFI_LIST':
-            payload = data.get('payload', [])
-            for device_data in payload:
-                try:
-                    device = Device.model_validate(device_data)
-                    self._devices[device.cooker_id] = device
-                    self.logger.info(f"  → {device.name} ({device.oven_version.value})")
-                except ValueError as e:
-                    self.logger.error(f"Device validation error: {e}")
+            try:
+                # Validate response structure
+                response = DeviceListResponse.model_validate(data)
+                
+                # Process each device in the payload
+                for device_data in response.payload:
+                    try:
+                        device = Device.model_validate(device_data)
+                        self._devices[device.cooker_id] = device
+                        self.logger.info(f"  → {device.name} ({device.oven_version.value})")
+                    except ValueError as e:
+                        self.logger.error(f"Device validation error: {e}")
+            except ValueError as e:
+                self.logger.error(f"Invalid device list response: {e}")
 
     def get_device(self, device_id: str) -> Device:
         """Get device by ID."""
