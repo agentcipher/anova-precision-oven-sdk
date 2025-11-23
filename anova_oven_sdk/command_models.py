@@ -18,9 +18,18 @@ class CommandType(str, Enum):
 class BaseCommand(BaseModel):
     """Base command structure for all oven commands."""
     model_config = ConfigDict(populate_by_name=True)
-    
+
     id: str = Field(..., description="Device ID")
     type: str = Field(..., description="Command type")
+
+
+class WebSocketCommand(BaseModel):
+    """Wrapper for WebSocket command with proper structure."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    command: str = Field(..., description="Command type")
+    request_id: str = Field(..., serialization_alias="requestId", description="Unique request ID")
+    payload: BaseCommand = Field(..., description="Command payload")
 
 
 # ============================================================================
@@ -30,7 +39,7 @@ class BaseCommand(BaseModel):
 class StartCommandPayloadV1(BaseModel):
     """Payload for V1 start command."""
     model_config = ConfigDict(populate_by_name=True)
-    
+
     cook_id: str = Field(..., serialization_alias="cookId", description="Unique cook session ID")
     stages: List[Dict[str, Any]] = Field(..., description="Cooking stages")
 
@@ -38,7 +47,7 @@ class StartCommandPayloadV1(BaseModel):
 class StartCommandPayloadV2(BaseModel):
     """Payload for V2 start command."""
     model_config = ConfigDict(populate_by_name=True)
-    
+
     stages: List[Dict[str, Any]] = Field(..., description="Cooking stages")
     cook_id: str = Field(..., serialization_alias="cookId", description="Unique cook session ID")
     cooker_id: str = Field(..., serialization_alias="cookerId", description="Device ID")
@@ -71,7 +80,7 @@ class StopCommand(BaseCommand):
 class ProbeCommandPayload(BaseModel):
     """Payload for probe temperature command."""
     model_config = ConfigDict(populate_by_name=True)
-    
+
     setpoint: Dict[str, float] = Field(..., description="Temperature setpoint")
 
 
@@ -88,9 +97,9 @@ class ProbeCommand(BaseCommand):
 class TemperatureUnitCommandPayload(BaseModel):
     """Payload for temperature unit command."""
     model_config = ConfigDict(populate_by_name=True)
-    
+
     temperature_unit: str = Field(..., serialization_alias="temperatureUnit", description="Temperature unit (C or F)")
-    
+
     @field_validator('temperature_unit')
     @classmethod
     def validate_unit(cls, v: str) -> str:

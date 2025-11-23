@@ -8,7 +8,8 @@ from .models import CookStage, OvenVersion, TimerStartType, VentState, Temperatu
 from .command_models import (
     StartCommand, StartCommandPayloadV1, StartCommandPayloadV2,
     StopCommand, ProbeCommand, ProbeCommandPayload,
-    TemperatureUnitCommand, TemperatureUnitCommandPayload
+    TemperatureUnitCommand, TemperatureUnitCommandPayload,
+    WebSocketCommand
 )
 from .utils import generate_uuid
 
@@ -64,22 +65,25 @@ class CommandBuilder:
                 "id": generate_uuid(),
                 "type": "cook",
                 "userActionRequired": stage.user_action_required,
-                "stageTransitionType": "automatic" if not stage.user_action_required else "manual"
             })
 
+            # Add timer, probe, and transition fields in correct order
             if stage.timer:
-                cook["timer"] = stage.timer.model_dump(by_alias=True, exclude_none=True, mode='json')
                 cook["timerAdded"] = True
+                cook["probeAdded"] = False
                 cook["timerStartOnDetect"] = stage.timer.start_type != TimerStartType.IMMEDIATELY
+                cook["stageTransitionType"] = "automatic" if not stage.user_action_required else "manual"
+                # Timer should only have 'initial', no 'startType'
+                cook["timer"] = {"initial": stage.timer.initial}
             else:
                 cook["timerAdded"] = False
+                cook["probeAdded"] = False
                 cook["timerStartOnDetect"] = False
+                cook["stageTransitionType"] = "automatic" if not stage.user_action_required else "manual"
 
             if stage.probe:
                 cook["probeAdded"] = True
                 cook["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
-            else:
-                cook["probeAdded"] = False
 
             stage_payloads.append(cook)
 
@@ -88,7 +92,14 @@ class CommandBuilder:
             stages=stage_payloads
         )
         command = StartCommand(id=device_id, payload=payload)
-        return command.model_dump(by_alias=True, exclude_none=True)
+
+        # Wrap in WebSocket command structure
+        ws_command = WebSocketCommand(
+            command="CMD_APO_START",
+            request_id=generate_uuid(),
+            payload=command
+        )
+        return ws_command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def _build_v2_start(device_id: str, stages: List[CookStage]) -> Dict[str, Any]:
@@ -111,26 +122,42 @@ class CommandBuilder:
                     },
                     "temperatureBulbs": {
                         "mode": stage.mode.value,
-                        stage.mode.value: {"setpoint": stage.temperature.model_dump(exclude={'fahrenheit'}, exclude_none=True)}
-                    }
-                },
-                "entry": {
-                    "conditions": {
-                        "and": {
-                            f"nodes.temperatureBulbs.{stage.mode.value}.current.celsius": {
-                                ">=": stage.temperature.celsius
-                            }
-                        }
+                        stage.mode.value: {
+                            "setpoint": stage.temperature.model_dump(exclude={'fahrenheit'}, exclude_none=True)}
                     }
                 },
                 "exit": {"conditions": {"and": {}}}
             }
 
+            # Entry conditions based on temperature
+            stage_data["entry"] = {
+                "conditions": {
+                    "and": {
+                        f"nodes.temperatureBulbs.{stage.mode.value}.current.celsius": {
+                            ">=": stage.temperature.celsius
+                        }
+                    }
+                }
+            }
+
             if stage.steam:
-                stage_data["do"]["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True, mode='json')
+                stage_data["do"]["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True,
+                                                                             mode='json')
 
             if stage.timer:
-                stage_data["do"]["timer"] = stage.timer.model_dump(by_alias=True, exclude_none=True, mode='json')
+                # Timer with entry conditions nested inside
+                stage_data["do"]["timer"] = {
+                    "initial": stage.timer.initial,
+                    "entry": {
+                        "conditions": {
+                            "and": {
+                                f"nodes.temperatureBulbs.{stage.mode.value}.current.celsius": {
+                                    ">=": stage.temperature.celsius
+                                }
+                            }
+                        }
+                    }
+                }
                 stage_data["exit"]["conditions"]["and"]["nodes.timer.mode"] = {"=": "completed"}
 
             if stage.probe:
@@ -149,24 +176,52 @@ class CommandBuilder:
             cookable_type="manual"
         )
         command = StartCommand(id=device_id, payload=payload)
-        return command.model_dump(by_alias=True, exclude_none=True)
+
+        # Wrap in WebSocket command structure
+        ws_command = WebSocketCommand(
+            command="CMD_APO_START",
+            request_id=generate_uuid(),
+            payload=command
+        )
+        return ws_command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def build_stop_command(device_id: str) -> Dict[str, Any]:
         """Build stop command."""
         command = StopCommand(id=device_id)
-        return command.model_dump(by_alias=True, exclude_none=True)
+
+        # Wrap in WebSocket command structure
+        ws_command = WebSocketCommand(
+            command="CMD_APO_STOP",
+            request_id=generate_uuid(),
+            payload=command
+        )
+        return ws_command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def build_probe_command(device_id: str, temp: Temperature) -> Dict[str, Any]:
         """Build probe command."""
         payload = ProbeCommandPayload(setpoint=temp.model_dump(exclude_none=True))
         command = ProbeCommand(id=device_id, payload=payload)
-        return command.model_dump(by_alias=True, exclude_none=True)
+
+        # Wrap in WebSocket command structure
+        ws_command = WebSocketCommand(
+            command="CMD_APO_SET_PROBE",
+            request_id=generate_uuid(),
+            payload=command
+        )
+        return ws_command.model_dump(by_alias=True, exclude_none=True)
 
     @staticmethod
     def build_temperature_unit_command(device_id: str, unit: str) -> Dict[str, Any]:
         """Build temperature unit command."""
         payload = TemperatureUnitCommandPayload(temperature_unit=unit)
         command = TemperatureUnitCommand(id=device_id, payload=payload)
-        return command.model_dump(by_alias=True, exclude_none=True)
+
+        # Wrap in WebSocket command structure
+        ws_command = WebSocketCommand(
+            command="CMD_APO_SET_TEMPERATURE_UNIT",
+            request_id=generate_uuid(),
+            payload=command
+        )
+        return ws_command.model_dump(by_alias=True, exclude_none=True)
