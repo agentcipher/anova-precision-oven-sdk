@@ -337,14 +337,19 @@ class SteamSettings(BaseModel):
                 raise ValueError("steam_percentage required when mode is STEAM_PERCENTAGE")
         return self
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to API format (backward compatibility wrapper)."""
+    @model_serializer(mode='wrap', when_used='json')
+    def _serialize_for_api(self, serializer, info):
+        """Serialize in API format when mode='json'."""
         result = {"mode": self.mode.value}
         if self.mode == SteamMode.RELATIVE_HUMIDITY and self.relative_humidity is not None:
             result["relativeHumidity"] = {"setpoint": self.relative_humidity}
         elif self.mode == SteamMode.STEAM_PERCENTAGE and self.steam_percentage is not None:
             result["steamPercentage"] = {"setpoint": self.steam_percentage}
         return result
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to API format (backward compatibility wrapper)."""
+        return self.model_dump(mode='json')
 
 
 class Timer(BaseModel):
