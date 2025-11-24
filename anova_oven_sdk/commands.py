@@ -36,6 +36,7 @@ class CommandBuilder:
 
         for stage in stages:
             # Preheat stage
+            # Build in correct field order as per API documentation
             preheat = {
                 "stepType": "stage",
                 "id": generate_uuid(),
@@ -54,20 +55,33 @@ class CommandBuilder:
                 "stageTransitionType": "automatic"
             }
 
+            # Add steamGenerators to preheat stage
+            # Only include for V1 when the stage has steam configured
             if stage.steam:
                 preheat["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True, mode='json')
 
             stage_payloads.append(preheat)
 
-            # Cook stage
-            cook = preheat.copy()
-            cook.update({
+            # Cook stage - build in correct field order
+            # CRITICAL: Field order matters for API compatibility
+            cook = {
+                "stepType": "stage",
                 "id": generate_uuid(),
+                "title": stage.title,
+                "description": stage.description,
                 "type": "cook",
                 "userActionRequired": stage.user_action_required,
-            })
+                "temperatureBulbs": {
+                    "mode": stage.mode.value,
+                    stage.mode.value: {"setpoint": stage.temperature.model_dump(exclude_none=True)}
+                },
+                "heatingElements": stage.heating_elements.model_dump(mode='json'),
+                "fan": {"speed": stage.fan_speed},
+                "vent": {"open": stage.vent_open},
+                "rackPosition": stage.rack_position,
+            }
 
-            # Add timer, probe, and transition fields in correct order
+            # Add timer-related fields in correct order (before stageTransitionType)
             if stage.timer:
                 cook["timerAdded"] = True
                 cook["probeAdded"] = False
@@ -84,6 +98,9 @@ class CommandBuilder:
             if stage.probe:
                 cook["probeAdded"] = True
                 cook["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
+
+            # IMPORTANT: Do NOT add steamGenerators to cook stage
+            # This is different from preheat stage
 
             stage_payloads.append(cook)
 
@@ -108,62 +125,79 @@ class CommandBuilder:
         stage_payloads = []
 
         for stage in stages:
-            stage_data = {
-                "id": generate_uuid(),
-                "title": stage.title,
-                "description": stage.description,
-                "rackPosition": stage.rack_position,
-                "do": {
-                    "type": "cook",
-                    "fan": {"speed": stage.fan_speed},
-                    "heatingElements": stage.heating_elements.model_dump(mode='json'),
-                    "exhaustVent": {
-                        "state": VentState.OPEN.value if stage.vent_open else VentState.CLOSED.value
-                    },
-                    "temperatureBulbs": {
-                        "mode": stage.mode.value,
-                        stage.mode.value: {
-                            "setpoint": stage.temperature.model_dump(exclude={'fahrenheit'}, exclude_none=True)}
-                    }
-                },
-                "exit": {"conditions": {"and": {}}}
-            }
-
-            # Entry conditions based on temperature
-            stage_data["entry"] = {
-                "conditions": {
-                    "and": {
-                        f"nodes.temperatureBulbs.{stage.mode.value}.current.celsius": {
-                            ">=": stage.temperature.celsius
-                        }
-                    }
+            # Build 'do' section with correct field order
+            do_section = {
+                "type": "cook",
+                "fan": {"speed": stage.fan_speed},
+                "heatingElements": stage.heating_elements.model_dump(mode='json'),
+                "exhaustVent": {
+                    "state": VentState.OPEN.value if stage.vent_open else VentState.CLOSED.value
                 }
             }
 
-
-
+            # Add steamGenerators BEFORE temperatureBulbs if present
             if stage.steam:
-                stage_data["do"]["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True,
-                                                                             mode='json')
+                do_section["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True, mode='json')
 
-            if stage.timer:
-                # Timer with entry conditions nested inside
-                stage_data["do"]["timer"] = {
-                    "initial": stage.timer.initial,
-                    "entry": {
-                        "conditions": {
-                            "and": {
-                                f"nodes.temperatureBulbs.{stage.mode.value}.current.celsius": {
-                                    ">=": stage.temperature.celsius
-                                }
+            # Add temperatureBulbs after steam (or after exhaustVent if no steam)
+            do_section["temperatureBulbs"] = {
+                "mode": stage.mode.value,
+                stage.mode.value: {
+                    "setpoint": stage.temperature.model_dump(exclude={'fahrenheit'}, exclude_none=True)
+                }
+            }
+
+            # Build stage_data with correct field order: id, do, exit, [entry], title, description, rackPosition
+            stage_data = {
+                "id": generate_uuid(),
+                "do": do_section,
+                "exit": {"conditions": {"and": {}}}
+            }
+
+            # Determine if this stage needs entry conditions
+            # Entry conditions are only added if timer has entry (preheating condition)
+            has_timer_with_entry = stage.timer and stage.steam
+
+            if has_timer_with_entry:
+                stage_data["entry"] = {
+                    "conditions": {
+                        "and": {
+                            f"nodes.temperatureBulbs.{stage.mode.value}.current.celsius": {
+                                ">=": stage.temperature.celsius
                             }
                         }
                     }
                 }
+
+            # Add title, description, rackPosition after exit/entry
+            stage_data["title"] = stage.title
+            stage_data["description"] = stage.description
+            stage_data["rackPosition"] = stage.rack_position
+
+            # Add timer to do section
+            if stage.timer:
+                # Timer has entry conditions only if stage has steam (preheating)
+                if has_timer_with_entry:
+                    do_section["timer"] = {
+                        "initial": stage.timer.initial,
+                        "entry": {
+                            "conditions": {
+                                "and": {
+                                    f"nodes.temperatureBulbs.{stage.mode.value}.current.celsius": {
+                                        ">=": stage.temperature.celsius
+                                    }
+                                }
+                            }
+                        }
+                    }
+                else:
+                    # Timer without entry (no preheating needed)
+                    do_section["timer"] = {"initial": stage.timer.initial}
+
                 stage_data["exit"]["conditions"]["and"]["nodes.timer.mode"] = {"=": "completed"}
 
             if stage.probe:
-                stage_data["do"]["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
+                do_section["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
 
             stage_payloads.append(stage_data)
 
