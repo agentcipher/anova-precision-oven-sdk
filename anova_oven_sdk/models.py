@@ -104,15 +104,6 @@ class Temperature(BaseModel):
         if self.celsius < -273.15:
             raise ValueError("Temperature cannot be below absolute zero (-273.15°C / -459.67°F)")
 
-        # Round to 2 decimal places
-        if self.celsius is not None:
-            self.celsius = round(self.celsius, 2)
-        if self.fahrenheit is not None:
-            self.fahrenheit = round(self.fahrenheit, 2)
-            # Cast to int if whole number (e.g. 350.0 -> 350)
-            if self.fahrenheit.is_integer():
-                self.fahrenheit = int(self.fahrenheit)
-
         return self
 
     @classmethod

@@ -45,7 +45,7 @@ class WebSocketClient:
                f"supportedAccessories={','.join(settings.supported_accessories)}")
 
         try:
-            self.logger.info(f"Connecting to {settings.ws_url}...")
+            self.logger.info(f"Connecting to {settings.ws_url} using supported_accessories: {settings.supported_accessories}")
             self._ws = await asyncio.wait_for(
                 websockets.connect(url),
                 timeout=settings.connection_timeout

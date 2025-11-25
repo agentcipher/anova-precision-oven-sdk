@@ -323,8 +323,8 @@ class TestAnovaOvenHandleMessage:
         
         oven._handle_message(data)
         
-        assert device.state_nodes is not None
-        assert device.state_nodes.temperature_bulbs.mode == "dry"
+        assert device.nodes is not None
+        assert device.nodes.temperature_bulbs.mode == "dry"
         assert device.last_update is not None
 
     def test_handle_message_apo_state_missing_nodes(self, mock_settings, mock_client, mock_logger):
@@ -355,7 +355,7 @@ class TestAnovaOvenHandleMessage:
         # Should not crash and should update timestamp
         assert device.last_update is not None
         # Nodes should remain None
-        assert device.state_nodes is None
+        assert device.nodes is None
 
     def test_handle_message_apo_state_fallback_single_device(self, mock_settings, mock_client, mock_logger):
         """Test handling APO state event with fallback to single device."""
@@ -422,7 +422,7 @@ class TestAnovaOvenHandleMessage:
         oven._handle_message(data)
         
         # Should update the single device
-        assert device.state_nodes is not None
+        assert device.nodes is not None
         assert device.last_update is not None
 
     def test_handle_message_apo_state_unknown_device(self, mock_settings, mock_client, mock_logger):
@@ -457,8 +457,8 @@ class TestAnovaOvenHandleMessage:
         assert "unknown device" in call_args
         
         # Devices should not be updated (checking one property)
-        assert device1.state_nodes is None
-        assert device2.state_nodes is None
+        assert device1.nodes is None
+        assert device2.nodes is None
 
     def test_handle_message_apo_state_invalid(self, mock_settings, mock_client, mock_logger):
         """Test handling invalid APO state event."""

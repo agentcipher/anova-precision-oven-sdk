@@ -204,7 +204,7 @@ class AnovaOven:
                     if status == "success":
                         self.logger.debug(f"Command success: {msg}")
                     else:
-                        self.logger.warning(f"Command response: {status} - {msg}")
+                        self.logger.warning(f"Command response: {status} - {msg} - {data}")
             except ValueError as e:
                 self.logger.error(f"Invalid command response: {e}")
 
@@ -236,6 +236,7 @@ class AnovaOven:
             temperature: Optional[Union[float, Temperature]] = None,
             temperature_unit: str = "C",
             duration: Optional[int] = None,
+            wait_for_response: bool = False,
             **kwargs
     ) -> None:
         """
@@ -247,6 +248,7 @@ class AnovaOven:
             temperature: Temperature as float or Temperature object
             temperature_unit: Unit for float temperature ("C" or "F")
             duration: Duration in seconds
+            wait_for_response: Wait for API response confirmation
             **kwargs: Additional parameters
 
         Examples:
@@ -314,7 +316,7 @@ class AnovaOven:
         import json
         self.logger.debug(f"CMD_APO_START payload:\n{json.dumps(payload, indent=2, default=str)}")
 
-        await self.client.send_command("CMD_APO_START", payload)
+        await self.client.send_command("CMD_APO_START", payload, wait_response=wait_for_response)
 
         # Log with temperature display
         first_temp = stages[0].temperature

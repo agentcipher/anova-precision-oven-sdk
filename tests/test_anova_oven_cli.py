@@ -329,7 +329,7 @@ class TestAnovaOvenCLI:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Error: Connection failed" in captured.err
+            assert "Discovery failed: Connection failed" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_recipes_list_success(
@@ -395,7 +395,7 @@ class TestAnovaOvenCLI:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Error: File error" in captured.err
+            assert "Recipe list failed: File error" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_recipes_show_success(
@@ -596,7 +596,7 @@ recipes:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Error:" in captured.err
+            assert "Recipe show failed" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_cook_with_recipe(
@@ -612,7 +612,16 @@ recipes:
             temp=None,
             unit='C',
             duration=None,
-            fan_speed=100
+            fan_speed=100,
+            json=False,
+            interactive=False,
+            wait_for_response=True,
+            top=False,
+            bottom=False,
+            rear=False,
+            dry_run=False,
+            show_payload=False,
+            monitor=False
         )
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
@@ -645,12 +654,22 @@ recipes:
             temp=200.0,
             unit='C',
             duration=1800,
-            fan_speed=80
+            fan_speed=80,
+            json=False,
+            interactive=False,
+            wait_for_response=True,
+            top=False,
+            bottom=False,
+            rear=False,
+            dry_run=False,
+            show_payload=False,
+            monitor=False
         )
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
             mock_oven = AsyncMock()
             mock_oven.discover_devices = AsyncMock(return_value=[mock_oven_device])
+            mock_oven.get_device = Mock(return_value=mock_oven_device)
             mock_oven.start_cook = AsyncMock()
             mock_oven.__aenter__ = AsyncMock(return_value=mock_oven)
             mock_oven.__aexit__ = AsyncMock(return_value=None)
@@ -678,12 +697,22 @@ recipes:
             temp=180.0,
             unit='F',
             duration=None,
-            fan_speed=100
+            fan_speed=100,
+            json=False,
+            interactive=False,
+            wait_for_response=True,
+            top=False,
+            bottom=False,
+            rear=False,
+            dry_run=False,
+            show_payload=False,
+            monitor=False
         )
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
             mock_oven = AsyncMock()
             mock_oven.discover_devices = AsyncMock(return_value=[mock_oven_device])
+            mock_oven.get_device = Mock(return_value=mock_oven_device)
             mock_oven.start_cook = AsyncMock()
             mock_oven.__aenter__ = AsyncMock(return_value=mock_oven)
             mock_oven.__aexit__ = AsyncMock(return_value=None)
@@ -706,7 +735,16 @@ recipes:
             temp=200.0,
             unit='C',
             duration=None,
-            fan_speed=100
+            fan_speed=100,
+            json=False,
+            interactive=False,
+            wait_for_response=True,
+            top=False,
+            bottom=False,
+            rear=False,
+            dry_run=False,
+            show_payload=False,
+            monitor=False
         )
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
@@ -721,7 +759,7 @@ recipes:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Device 'nonexistent' not found" in captured.err
+            assert "Device 'nonexistent' not found" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_cook_no_recipe_or_temp(
@@ -736,12 +774,22 @@ recipes:
             temp=None,
             unit='C',
             duration=None,
-            fan_speed=100
+            fan_speed=100,
+            json=False,
+            interactive=False,
+            wait_for_response=True,
+            top=False,
+            bottom=False,
+            rear=False,
+            dry_run=False,
+            show_payload=False,
+            monitor=False
         )
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
             mock_oven = AsyncMock()
             mock_oven.discover_devices = AsyncMock(return_value=[mock_oven_device])
+            mock_oven.get_device = Mock(return_value=mock_oven_device)
             mock_oven.__aenter__ = AsyncMock(return_value=mock_oven)
             mock_oven.__aexit__ = AsyncMock(return_value=None)
             mock_oven_class.return_value = mock_oven
@@ -751,7 +799,7 @@ recipes:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Provide either --recipe or --temp" in captured.err
+            assert "Provide either --recipe or --temp" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_cook_anova_error(
@@ -766,12 +814,22 @@ recipes:
             temp=200.0,
             unit='C',
             duration=None,
-            fan_speed=100
+            fan_speed=100,
+            json=False,
+            interactive=False,
+            wait_for_response=True,
+            top=False,
+            bottom=False,
+            rear=False,
+            dry_run=False,
+            show_payload=False,
+            monitor=False
         )
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
             mock_oven = AsyncMock()
             mock_oven.discover_devices = AsyncMock(return_value=[mock_oven_device])
+            mock_oven.get_device = Mock(return_value=mock_oven_device)
             mock_oven.start_cook = AsyncMock(side_effect=AnovaError("Cook failed"))
             mock_oven.__aenter__ = AsyncMock(return_value=mock_oven)
             mock_oven.__aexit__ = AsyncMock(return_value=None)
@@ -782,7 +840,7 @@ recipes:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Error: Cook failed" in captured.err
+            assert "Cook failed: Cook failed" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_stop_success(
@@ -791,11 +849,12 @@ recipes:
         capsys
     ) -> None:
         """Test stop command."""
-        args = argparse.Namespace(device='device123')
+        args = argparse.Namespace(device='device123', interactive=False, verbose=False, json=False)
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
             mock_oven = AsyncMock()
             mock_oven.discover_devices = AsyncMock(return_value=[mock_oven_device])
+            mock_oven.get_device = Mock(return_value=mock_oven_device)
             mock_oven.stop_cook = AsyncMock()
             mock_oven.__aenter__ = AsyncMock(return_value=mock_oven)
             mock_oven.__aexit__ = AsyncMock(return_value=None)
@@ -811,7 +870,7 @@ recipes:
     @pytest.mark.asyncio
     async def test_cmd_stop_device_not_found(self, capsys) -> None:
         """Test stop command with device not found."""
-        args = argparse.Namespace(device='nonexistent')
+        args = argparse.Namespace(device='nonexistent', interactive=False, verbose=False)
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
             mock_oven = AsyncMock()
@@ -825,7 +884,7 @@ recipes:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Device 'nonexistent' not found" in captured.err
+            assert "Device 'nonexistent' not found" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_stop_anova_error(
@@ -849,7 +908,7 @@ recipes:
 
             assert exit_code == 1
             captured = capsys.readouterr()
-            assert "Error: Stop failed" in captured.err
+            assert "Stop failed: Stop failed" in captured.out
 
 
 # ============================================================================
@@ -860,11 +919,10 @@ recipes:
 class TestCreateParser:
     """Tests for create_parser function."""
 
-    def test_parser_creation(self) -> None:
-        """Test parser is created correctly."""
+    def test_parser_creation(self):
+        """Test parser creation."""
         parser = create_parser()
-        assert parser is not None
-        assert parser.description == "Anova Oven CLI - Control your Anova Precision Oven"
+        assert parser.description == "Anova Oven CLI - Enhanced testing interface" == "Anova Oven CLI - Control your Anova Precision Oven"
 
     def test_parser_global_arguments(self) -> None:
         """Test global arguments are defined."""
@@ -944,7 +1002,7 @@ class TestCreateParser:
         args = parser.parse_args(['cook', '--device', 'device123', '--temp', '200'])
 
         assert args.unit == 'C'
-        assert args.fan_speed == 100
+        assert args.fan_speed == 75
 
     def test_parser_stop_command(self) -> None:
         """Test stop command arguments."""
