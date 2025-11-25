@@ -16,14 +16,16 @@ class CommandType(str, Enum):
 
 
 class BaseCommand(BaseModel):
-    """Base command structure for all oven commands."""
+    """Base command structure for all oven commands.
+
+    CRITICAL: Field order must be: id, payload, type
+    This matches the working Anova example payloads.
+    """
     model_config = ConfigDict(populate_by_name=True)
 
     id: str = Field(..., description="Device ID")
-    type: str = Field(..., description="Command type")
-
-
-
+    # payload will be added by subclass
+    # type will be added by subclass after payload
 
 
 # ============================================================================
@@ -53,9 +55,12 @@ class StartCommandPayloadV2(BaseModel):
 
 
 class StartCommand(BaseCommand):
-    """Start cooking command."""
-    type: str = Field(default=CommandType.START.value, description="Command type")
+    """Start cooking command.
+
+    Field order: id (from BaseCommand), payload, type
+    """
     payload: StartCommandPayloadV1 | StartCommandPayloadV2 = Field(..., description="Command payload")
+    type: str = Field(default=CommandType.START.value, description="Command type")
 
 
 # ============================================================================
@@ -63,7 +68,10 @@ class StartCommand(BaseCommand):
 # ============================================================================
 
 class StopCommand(BaseCommand):
-    """Stop cooking command."""
+    """Stop cooking command.
+
+    Field order: id (from BaseCommand), type
+    """
     type: str = Field(default=CommandType.STOP.value, description="Command type")
 
 
@@ -79,9 +87,12 @@ class ProbeCommandPayload(BaseModel):
 
 
 class ProbeCommand(BaseCommand):
-    """Set probe temperature command."""
-    type: str = Field(default=CommandType.SET_PROBE.value, description="Command type")
+    """Set probe temperature command.
+
+    Field order: id (from BaseCommand), payload, type
+    """
     payload: ProbeCommandPayload = Field(..., description="Probe configuration")
+    type: str = Field(default=CommandType.SET_PROBE.value, description="Command type")
 
 
 # ============================================================================
@@ -104,15 +115,25 @@ class TemperatureUnitCommandPayload(BaseModel):
 
 
 class TemperatureUnitCommand(BaseCommand):
-    """Set temperature unit command."""
-    type: str = Field(default=CommandType.SET_TEMPERATURE_UNIT.value, description="Command type")
+    """Set temperature unit command.
+
+    Field order: id (from BaseCommand), payload, type
+    """
     payload: TemperatureUnitCommandPayload = Field(..., description="Temperature unit configuration")
+    type: str = Field(default=CommandType.SET_TEMPERATURE_UNIT.value, description="Command type")
 
 
 class WebSocketCommand(BaseModel):
-    """Wrapper for WebSocket command with proper structure."""
+    """Wrapper for WebSocket command with proper structure.
+
+    CRITICAL: Field order must match API documentation exactly:
+    - command
+    - payload
+    - requestId
+    """
     model_config = ConfigDict(populate_by_name=True)
 
     command: str = Field(..., description="Command type")
+    payload: Union[StartCommand, StopCommand, ProbeCommand, TemperatureUnitCommand] = Field(...,
+                                                                                            description="Command payload")
     request_id: str = Field(..., serialization_alias="requestId", description="Unique request ID")
-    payload: Union[StartCommand, StopCommand, ProbeCommand, TemperatureUnitCommand] = Field(..., description="Command payload")

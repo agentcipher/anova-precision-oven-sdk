@@ -82,6 +82,7 @@ class CommandBuilder:
             }
 
             # Add timer-related fields in correct order (before stageTransitionType)
+            # IMPORTANT: Only add these fields if timer or probe is present
             if stage.timer:
                 cook["timerAdded"] = True
                 cook["probeAdded"] = False
@@ -89,10 +90,14 @@ class CommandBuilder:
                 cook["stageTransitionType"] = "automatic" if not stage.user_action_required else "manual"
                 # Timer should only have 'initial', no 'startType'
                 cook["timer"] = {"initial": stage.timer.initial}
-            else:
+            elif stage.probe:
+                # Has probe but no timer
                 cook["timerAdded"] = False
-                cook["probeAdded"] = False
+                cook["probeAdded"] = True
                 cook["timerStartOnDetect"] = False
+                cook["stageTransitionType"] = "automatic" if not stage.user_action_required else "manual"
+            else:
+                # No timer and no probe - omit the timer/probe flags entirely
                 cook["stageTransitionType"] = "automatic" if not stage.user_action_required else "manual"
 
             if stage.probe:
