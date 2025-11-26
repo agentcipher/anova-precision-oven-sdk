@@ -4,7 +4,7 @@
 
 from typing import List, Dict, Any
 
-from .models import CookStage, OvenVersion, TimerStartType, VentState, Temperature
+from .models import CookStage, OvenVersion, TimerStartType, VentState, Temperature, StageType
 from .command_models import (
     StartCommand, StartCommandPayloadV1, StartCommandPayloadV2,
     StopCommand, ProbeCommand, ProbeCommandPayload,
@@ -35,14 +35,14 @@ class CommandBuilder:
         stage_payloads = []
 
         for stage in stages:
-            # Preheat stage
-            preheat = {
+            # Build the stage dict with the specified stage_type
+            stage_dict = {
                 "stepType": "stage",
                 "id": generate_uuid(),
                 "title": stage.title,
                 "description": stage.description,
-                "type": "preheat",
-                "userActionRequired": False,
+                "type": stage.stage_type.value,  # Use the stage's specified type
+                "userActionRequired": stage.user_action_required if stage.stage_type == StageType.COOK else False,
                 "temperatureBulbs": {
                     "mode": stage.mode.value,
                     stage.mode.value: {"setpoint": stage.temperature.model_dump(exclude_none=True)}
@@ -51,35 +51,25 @@ class CommandBuilder:
                 "fan": {"speed": stage.fan_speed},
                 "vent": {"open": stage.vent_open},
                 "rackPosition": stage.rack_position,
-                "stageTransitionType": "automatic"
+                "stageTransitionType": "automatic" if not stage.user_action_required else "manual"
             }
 
             if stage.steam:
-                preheat["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True, mode='json')
+                stage_dict["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True, mode='json')
 
-            stage_payloads.append(preheat)
+            # Add timer, probe for cook stages
+            if stage.stage_type == StageType.COOK:
+                if stage.timer:
+                    stage_dict["timerAdded"] = True
+                    stage_dict["probeAdded"] = False
+                    stage_dict["timerStartOnDetect"] = False
+                    stage_dict["timer"] = {"initial": stage.timer.initial}
 
-            # Cook stage
-            cook = preheat.copy()
-            cook.update({
-                "id": generate_uuid(),
-                "type": "cook",
-                "userActionRequired": stage.user_action_required,
-            })
+                if stage.probe:
+                    stage_dict["probeAdded"] = True
+                    stage_dict["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
 
-            # Add timer, probe, and transition fields in correct order
-            # Add timer, probe, and transition fields in correct order
-            if stage.timer:
-                cook["stageTransitionType"] = "automatic" if not stage.user_action_required else "manual"
-                # Timer should only have 'initial', no 'startType'
-                cook["timer"] = {"initial": stage.timer.initial}
-            else:
-                cook["stageTransitionType"] = "automatic" if not stage.user_action_required else "manual"
-
-            if stage.probe:
-                cook["probe"] = stage.probe.model_dump(by_alias=True, exclude_none=True, mode='json')
-
-            stage_payloads.append(cook)
+            stage_payloads.append(stage_dict)
 
         payload = StartCommandPayloadV1(
             cook_id=cook_id,
@@ -103,7 +93,7 @@ class CommandBuilder:
                 "description": stage.description,
                 "rackPosition": stage.rack_position,
                 "do": {
-                    "type": "cook",
+                    "type": stage.stage_type.value,  # Use the stage's specified type
                     "fan": {"speed": stage.fan_speed},
                     "heatingElements": stage.heating_elements.model_dump(mode='json'),
                     "exhaustVent": {
@@ -128,8 +118,6 @@ class CommandBuilder:
                     }
                 }
             }
-
-
 
             if stage.steam:
                 stage_data["do"]["steamGenerators"] = stage.steam.model_dump(by_alias=True, exclude_none=True,

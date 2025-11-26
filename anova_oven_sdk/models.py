@@ -57,6 +57,12 @@ class DeviceState(str, Enum):
     ERROR = "error"
 
 
+class StageType(str, Enum):
+    """Stage type for cooking stages."""
+    PREHEAT = "preheat"
+    COOK = "cook"
+
+
 # ============================================================================
 # TEMPERATURE MODEL - Enhanced with Full C/F Support
 # ============================================================================
@@ -397,6 +403,7 @@ class CookStage(BaseModel):
     title: str = Field("", description="Stage title")
     description: str = Field("", description="Stage description")
     user_action_required: bool = Field(False, description="Require manual transition")
+    stage_type: StageType = Field(StageType.COOK, description="Stage type (preheat or cook)")
 
     def validate_for_oven(self, oven_version: OvenVersion):
         """Validate stage for specific oven version."""
@@ -467,6 +474,7 @@ class RecipeStageConfig(BaseModel):
     vent_open: bool = Field(False, description="Vent state")
     user_action_required: bool = Field(False, description="Require manual transition")
     description: str = Field("", description="Stage description")
+    stage_type: str = Field("cook", description="Stage type (preheat or cook)")
 
     @field_validator('temperature')
     @classmethod
@@ -485,6 +493,14 @@ class RecipeStageConfig(BaseModel):
             v['mode'] = 'DRY'
 
         return v
+
+    @field_validator('stage_type')
+    @classmethod
+    def validate_stage_type(cls, v: str) -> str:
+        """Validate stage type."""
+        if v.lower() not in ['preheat', 'cook']:
+            raise ValueError("stage_type must be 'preheat' or 'cook'")
+        return v.lower()
 
     def to_cook_stage(self) -> CookStage:
         """
@@ -532,6 +548,9 @@ class RecipeStageConfig(BaseModel):
                     steam_percentage=self.steam['steam_percentage']
                 )
 
+        # Parse stage type
+        stage_type = StageType.PREHEAT if self.stage_type.lower() == 'preheat' else StageType.COOK
+
         # Create CookStage
         return CookStage(
             temperature=temperature,
@@ -544,7 +563,8 @@ class RecipeStageConfig(BaseModel):
             steam=steam,
             title=self.name,
             description=self.description,
-            user_action_required=self.user_action_required
+            user_action_required=self.user_action_required,
+            stage_type=stage_type
         )
 
 
@@ -715,7 +735,8 @@ class Recipe(BaseModel):
                     'rack_position': stage.rack_position,
                     'vent_open': stage.vent_open,
                     'user_action_required': stage.user_action_required,
-                    'description': stage.description
+                    'description': stage.description,
+                    'stage_type': stage.stage_type
                 }
                 for stage in self.stages
             ],

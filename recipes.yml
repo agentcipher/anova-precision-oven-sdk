@@ -6,8 +6,9 @@ recipes:
 
       stages:
         - name: "Stage 1 - Toast"
+          stage_type: "cook"
           temperature:
-            value: 200
+            value: 482
             temperature_unit: "F"
             mode: "DRY"
           timer:
@@ -20,10 +21,11 @@ recipes:
           rack_position: 3
 
         - name: "Stage 2 - Toast"
+          stage_type: "cook"
           temperature:
             value: 482
             temperature_unit: "F"
-            mode: "WET"
+            mode: "DRY"
           steam:
             steam_percentage: 100
           timer:
@@ -36,6 +38,7 @@ recipes:
           rack_position: 3
 
         - name: "Stage 3 - Toast"
+          stage_type: "cook"
           temperature:
             value: 77
             temperature_unit: "F"

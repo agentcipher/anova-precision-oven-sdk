@@ -1,6 +1,6 @@
 """Anova Precision Oven Python SDK"""
 
-__version__ = "2025.11.1"
+__version__ = "2025.11.16"
 
 # Import main classes for easy access
 from .oven import AnovaOven
@@ -19,7 +19,8 @@ from .models import (
     DeviceState,
     Recipe,
     RecipeLibrary,
-    RecipeStageConfig
+    RecipeStageConfig,
+    StageType
 )
 
 from .settings import settings
@@ -49,7 +50,7 @@ __all__ = [
     'Recipe',
     'RecipeLibrary',
     'RecipeStageConfig',
-    'CookingPresets',
+    'StageType',
     'AnovaError',
     'ConfigurationError',
     'ConnectionError',
