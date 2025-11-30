@@ -13,7 +13,9 @@ Use at your own risk. Always supervise cooking operations and follow manufacture
 
 ---
 
-Python SDK for controlling Anova Precision Ovens using the official Anova API ([https://developer.anovaculinary.com/docs/devices/wifi/oven-commands](https://developer.anovaculinary.com/docs/devices/wifi/oven-commands)). The goal of this final project is to create an integration for Home Assistant which leverages this SDK for operation. The majority of this code was written using Anthropic Claude ([https://claude.ai](https://claude.ai))
+Python SDK for controlling Anova Precision Ovens using the official Anova API ([https://developer.anovaculinary.com/docs/devices/wifi/oven-commands](https://developer.anovaculinary.com/docs/devices/wifi/oven-commands)). 
+
+The goal of this final project is to create an integration for Home Assistant which leverages this SDK for operation. The majority of this code was written using Anthropic Claude ([https://claude.ai](https://claude.ai)) and Google Antigravity ([https://antigravity.google](https://antigravity.google)).
 
 ## Installation
 
@@ -54,27 +56,25 @@ export ANOVA_TOKEN="anova-your-token-here"
 
 ```python
 from anova_oven_sdk import AnovaOven
-from anova_oven_sdk import CookingPresets
 
 async def main():
     async with AnovaOven() as oven:
         # Discover devices
         devices = await oven.discover_devices()
+        if not devices:
+            print("No devices found")
+            return
+            
         device_id = devices[0].id
+        print(f"Found device: {devices[0].name} ({device_id})")
         
-        # Simple roast
+        # Simple roast: 200°C for 30 minutes
         await oven.start_cook(
             device_id=device_id,
             temperature=200,
             duration=1800  # 30 minutes
         )
-        
-        # Or use presets
-        await CookingPresets.roast(
-            oven, device_id,
-            temperature=200,
-            duration_minutes=30
-        )
+        print("Cook started!")
 
 import asyncio
 asyncio.run(main())
@@ -262,6 +262,8 @@ recipes:
 
 ### Multi-Stage Cooking
 
+The SDK uses Pydantic models for robust validation and type safety.
+
 ```python
 from anova_oven_sdk import (
     AnovaOven, CookStage, Temperature, Timer,
@@ -336,18 +338,43 @@ See `settings.yaml` for all available configuration options:
 
 ### Model Validation
 
-All models are validated automatically:
+All models are validated automatically using Pydantic:
 
 ```python
 from anova_oven_sdk import Temperature, HeatingElements
 
-# Automatic validation
+# Automatic validation and conversion
 temp = Temperature(celsius=200)  # ✓ Valid
+print(temp.fahrenheit)  # 392.0
+
 # temp = Temperature(celsius=-300)  # ✗ ValidationError
 
 # Heating elements validation
 heating = HeatingElements(rear=True)  # ✓ Valid
 # heating = HeatingElements(top=True, bottom=True, rear=True)  # ✗ ValidationError
+```
+
+### Device State Access
+
+The `Device` object provides access to detailed oven state through the `nodes` property:
+
+```python
+device = oven.get_device(device_id)
+
+# Basic info
+print(f"State: {device.state}")
+print(f"Current Temp: {device.current_temperature}")
+
+# Detailed state via nodes (if available)
+if device.nodes:
+    # Temperature bulbs
+    print(f"Dry Bulb: {device.nodes.temperature_bulbs.dry.current.celsius}°C")
+    
+    # Heating elements status
+    print(f"Rear Element: {device.nodes.heating_elements.rear.on}")
+    
+    # Steam generators
+    print(f"Boiler: {device.nodes.steam_generators.boiler.on}")
 ```
 
 ## Error Handling
@@ -484,6 +511,6 @@ python anova_oven_cli.py cook --device "$DEVICE_ID" --recipe sous_vide_steak
 
 This project uses the Anova Precision Oven API documented at [https://developer.anovaculinary.com](https://developer.anovaculinary.com).
 
-The majority of this code was created using Anthropic Claude AI assistant ([https://claude.ai](https://claude.ai)).
+The majority of this code was created using Anthropic Claude AI assistant ([https://claude.ai](https://claude.ai)) and Google Antigravity ([https://antigravity.google](https://antigravity.google)).
 
 **This is unofficial software not affiliated with or endorsed by Anova Culinary.**

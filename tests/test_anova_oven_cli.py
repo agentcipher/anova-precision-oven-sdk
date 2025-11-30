@@ -476,7 +476,7 @@ recipes:
         assert exit_code == 0
         captured = capsys.readouterr()
         # Check that steam settings are shown
-        assert "50% relative humidity" in captured.out or "steam_percentage" in captured.out.lower()
+        assert "50% RH" in captured.out or "steam_percentage" in captured.out.lower()
 
     @pytest.mark.asyncio
     async def test_cmd_recipes_show_no_steam(
@@ -865,7 +865,7 @@ recipes:
 
             assert exit_code == 0
             captured = capsys.readouterr()
-            assert "Cook stopped successfully" in captured.out
+            assert "Cook stopped on Test Oven" in captured.out
 
     @pytest.mark.asyncio
     async def test_cmd_stop_device_not_found(self, capsys) -> None:
@@ -893,7 +893,7 @@ recipes:
         capsys
     ) -> None:
         """Test stop command with AnovaError."""
-        args = argparse.Namespace(device='device123')
+        args = argparse.Namespace(device='device123', interactive=False, verbose=False, json=False)
 
         with patch('anova_oven_cli.AnovaOven') as mock_oven_class:
             mock_oven = AsyncMock()
@@ -922,7 +922,7 @@ class TestCreateParser:
     def test_parser_creation(self):
         """Test parser creation."""
         parser = create_parser()
-        assert parser.description == "Anova Oven CLI - Enhanced testing interface" == "Anova Oven CLI - Control your Anova Precision Oven"
+        assert parser.description == "Anova Oven CLI - Enhanced testing interface"
 
     def test_parser_global_arguments(self) -> None:
         """Test global arguments are defined."""

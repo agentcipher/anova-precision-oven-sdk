@@ -2,8 +2,8 @@
 # Response Models - Pydantic Models for Inbound API Responses
 # ============================================================================
 
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional, List, Dict, Any, Union
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from enum import Enum
 
 
@@ -156,9 +156,16 @@ class SteamGenerators(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     mode: str
-    relative_humidity: SteamGeneratorState = Field(..., alias="relativeHumidity")
+    relative_humidity: Optional[SteamGeneratorState] = Field(None, alias="relativeHumidity")
     evaporator: SteamGeneratorState
     boiler: SteamGeneratorState
+
+    @model_validator(mode='after')
+    def validate_steam_generators(self):
+        """Validate steam generators state."""
+        if self.mode == "relative-humidity" and self.relative_humidity is None:
+             raise ValueError("relativeHumidity is required when mode is 'relative-humidity'")
+        return self
 
 
 class HeatingElementState(BaseModel):
@@ -241,8 +248,12 @@ class Nodes(BaseModel):
     user_interface_circuit: UserInterfaceCircuitState = Field(..., alias="userInterfaceCircuit")
 
 
-class ApoStateResponsePayload(BaseModel):
-    """Payload for APO state event."""
+class ApoStateData(BaseModel):
+    """
+    Nested state data for V1 ovens.
+    
+    V1 ovens nest the actual state data under a 'state' key in the payload.
+    """
     model_config = ConfigDict(populate_by_name=True, extra='allow')
 
     cooker_id: Optional[str] = Field(None, alias="cookerId")
@@ -250,6 +261,24 @@ class ApoStateResponsePayload(BaseModel):
     updated_timestamp: Optional[str] = Field(None, alias="updatedTimestamp")
     system_info: Optional[SystemInfo] = Field(None, alias="systemInfo")
     state: Optional[OvenState] = None
+    nodes: Optional[Nodes] = None
+    cook: Optional[Dict[str, Any]] = None
+
+
+
+class ApoStateResponsePayload(BaseModel):
+    """Payload for APO state event."""
+    model_config = ConfigDict(populate_by_name=True, extra='allow')
+
+    cooker_id: Optional[str] = Field(None, alias="cookerId")
+    type: Optional[str] = None
+    version: Optional[int] = None
+    updated_timestamp: Optional[str] = Field(None, alias="updatedTimestamp")
+    system_info: Optional[SystemInfo] = Field(None, alias="systemInfo")
+    
+    # State can be OvenState (V2/Flat) or ApoStateData (V1/Nested)
+    state: Optional[Union[ApoStateData, OvenState]] = None
+    
     nodes: Optional[Nodes] = None
 
 

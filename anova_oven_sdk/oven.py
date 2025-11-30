@@ -125,9 +125,6 @@ class AnovaOven:
                 # Validate response structure
                 response = ApoStateResponse.model_validate(data)
 
-                # Get raw payload for nested structure handling
-                raw_payload = data.get('payload', {})
-
                 # Try to identify device
                 device_id = response.payload.cooker_id
                 device = None
@@ -140,30 +137,44 @@ class AnovaOven:
 
                 if device:
                     self.logger.info(f"Received state update for {device.name}")
+                    
+                    from .response_models import ApoStateData, OvenState, SystemInfo
 
-                    # For v1 ovens, data is nested under 'state' key
-                    nested_state = raw_payload.get('state', {})
+                    # Determine data source based on payload structure (V1 nested vs V2 flat)
+                    payload_state = response.payload.state
+                    
+                    nodes = None
+                    oven_state = None
+                    system_info = None
+                    
+                    if isinstance(payload_state, ApoStateData):
+                        # V1 Nested Structure
+                        nodes = payload_state.nodes
+                        oven_state = payload_state.state
+                        system_info = payload_state.system_info
+                    elif isinstance(payload_state, OvenState):
+                        # V2 Flat Structure (state is just OvenState)
+                        nodes = response.payload.nodes
+                        oven_state = payload_state
+                        system_info = response.payload.system_info
+                    else:
+                        # Fallback (state might be None)
+                        nodes = response.payload.nodes
+                        system_info = response.payload.system_info
 
-                    # Update nodes - check both nested and top-level locations
-                    if 'nodes' in nested_state:
-                        device.nodes = response.payload.nodes or ApoStateResponse.model_validate(
-                            {'command': 'EVENT_APO_STATE', 'payload': nested_state}
-                        ).payload.nodes
-                        self.logger.info(f"Updated nodes for {device.name}")
-                    elif response.payload.nodes:
-                        device.nodes = response.payload.nodes
+                    # Update nodes
+                    if nodes:
+                        device.nodes = nodes
                         self.logger.info(f"Updated nodes for {device.name}")
 
                     # Update state_info (mode, temperatureUnit, etc.)
-                    if 'state' in nested_state:
-                        from .response_models import OvenState
-                        device.state_info = OvenState.model_validate(nested_state['state'])
+                    if oven_state:
+                        device.state_info = oven_state
 
                         # Update device.state enum based on mode
-                        mode_str = nested_state['state'].get('mode')
-                        if mode_str:
+                        if oven_state.mode:
                             from .models import DeviceState
-                            mode = mode_str.lower()
+                            mode = oven_state.mode.lower()
                             state_mapping = {
                                 "cook": DeviceState.COOKING,
                                 "cooking": DeviceState.COOKING,
@@ -176,15 +187,10 @@ class AnovaOven:
                             }
                             device.state = state_mapping.get(mode, DeviceState.IDLE)
                             self.logger.debug(f"Updated device state to {device.state} (from mode: {mode})")
-                    elif response.payload.state:
-                        device.state_info = response.payload.state
 
                     # Update system_info
-                    if 'systemInfo' in nested_state:
-                        from .response_models import SystemInfo
-                        device.system_info = SystemInfo.model_validate(nested_state['systemInfo'])
-                    elif response.payload.system_info:
-                        device.system_info = response.payload.system_info
+                    if system_info:
+                        device.system_info = system_info
 
                     # Update timestamp
                     device.last_update = datetime.now()

@@ -4,8 +4,9 @@ from unittest.mock import Mock, AsyncMock, patch
 from anova_oven_sdk.oven import AnovaOven
 from anova_oven_sdk.models import (
     Device, OvenVersion, Temperature, CookStage,
-    HeatingElements, SteamSettings, SteamMode, Probe
+    HeatingElements, SteamSettings, SteamMode, Probe, DeviceState
 )
+from anova_oven_sdk.response_models import ApoStateData, OvenState
 
 
 @pytest.fixture
@@ -373,3 +374,225 @@ class TestAnovaOvenContextManager:
 
             # Should still disconnect
             oven.client.disconnect.assert_called_once()
+
+@pytest.fixture
+def mock_oven():
+    """Create a mock oven instance with mocked dependencies."""
+    with patch('anova_oven_sdk.oven.setup_logging'), \
+         patch('anova_oven_sdk.oven.WebSocketClient'), \
+         patch('anova_oven_sdk.oven.settings'):
+        oven = AnovaOven()
+        # Add a mock device
+        device = Device(
+            cookerId="device123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+            state=DeviceState.IDLE
+        )
+        oven._devices["device123"] = device
+        return oven
+
+def test_handle_message_nested_state(mock_oven):
+    """Test handling EVENT_APO_STATE with nested state structure (V1 style)."""
+    # Mock payload with nested state
+    payload = {
+        "command": "EVENT_APO_STATE",
+        "payload": {
+            "cookerId": "device123",
+            "state": {
+                "state": {
+                    "mode": "cooking",
+                    "temperatureUnit": "F"
+                },
+                "systemInfo": {
+                    "firmwareVersion": "1.0.0",
+                    "hardwareVersion": "v1"
+                },
+                "nodes": {
+                    "temperatureBulbs": {
+                        "dry": {"current": {"celsius": 100}}
+                    }
+                }
+            }
+        }
+    }
+
+    # Mock ApoStateResponse
+    with patch('anova_oven_sdk.oven.ApoStateResponse') as mock_response_cls:
+        
+        # Create the main response mock
+        mock_response = Mock()
+        mock_response.payload.cooker_id = "device123"
+        
+        # Create the nested ApoStateData mock
+        mock_nested_state = Mock(spec=ApoStateData)
+        
+        # Mock the inner OvenState
+        mock_oven_state = Mock(spec=OvenState)
+        mock_oven_state.mode = "cooking"
+        mock_oven_state.temperature_unit = "F"
+        mock_nested_state.state = mock_oven_state
+        
+        # Mock the inner SystemInfo
+        mock_system_info = Mock()
+        mock_system_info.firmware_version = "1.0.0"
+        mock_nested_state.system_info = mock_system_info
+        
+        # Mock the inner Nodes
+        mock_nodes = Mock()
+        mock_nodes.temperature_bulbs.dry.current = {"celsius": 100}
+        mock_nested_state.nodes = mock_nodes
+        
+        # Assign the nested state to the payload
+        mock_response.payload.state = mock_nested_state
+        
+        # Set return value for validation
+        mock_response_cls.model_validate.return_value = mock_response
+
+        mock_oven._handle_message(payload)
+
+    device = mock_oven.get_device("device123")
+    
+    # Verify state update
+    assert device.state == DeviceState.COOKING
+    assert device.state_info.mode == "cooking"
+    assert device.state_info.temperature_unit == "F"
+    
+    # Verify system info update
+    assert device.system_info.firmware_version == "1.0.0"
+    
+    # Verify nodes update
+    assert device.nodes.temperature_bulbs.dry.current["celsius"] == 100
+
+def test_handle_message_response_command(mock_oven):
+    """Test handling RESPONSE command."""
+    # Success response
+    success_payload = {
+        "command": "RESPONSE",
+        "payload": {
+            "status": "success",
+            "message": "Command executed",
+            "requestId": "123"
+        }
+    }
+    mock_oven._handle_message(success_payload)
+    mock_oven.logger.debug.assert_called_with("Command success: Command executed")
+
+    # Error response (in RESPONSE command)
+    error_payload = {
+        "command": "RESPONSE",
+        "payload": {
+            "status": "error",
+            "message": "Something went wrong",
+            "requestId": "124"
+        }
+    }
+    mock_oven._handle_message(error_payload)
+    # Warning should be logged
+    args, _ = mock_oven.logger.warning.call_args
+    assert "Command response: error - Something went wrong" in args[0]
+
+def test_handle_message_error_command(mock_oven):
+    """Test handling ERROR command."""
+    payload = {
+        "command": "ERROR",
+        "payload": {
+            "errorCode": "500",
+            "errorMessage": "Internal Server Error",
+            "details": {"info": "more info"}
+        }
+    }
+
+    mock_oven._handle_message(payload)
+    
+    mock_oven.logger.error.assert_called_with("Server Error [500]: Internal Server Error")
+    mock_oven.logger.debug.assert_called_with("Error details: {'info': 'more info'}")
+
+def test_handle_message_response_invalid(mock_oven):
+    """Test handling RESPONSE command with invalid payload."""
+    # Invalid payload (missing required fields or wrong type)
+    # CommandResponsePayload allows extra fields, but CommandResponse expects payload to be a dict if present.
+    # Let's try passing a string as payload which should fail validation if model expects dict
+    # Actually, CommandResponse.payload is Optional[CommandResponsePayload].
+    # If we pass something that cannot be parsed as CommandResponsePayload (which is a dict), it should fail.
+    
+    payload = {
+        "command": "RESPONSE",
+        "payload": "invalid_string_payload"
+    }
+    
+    mock_oven._handle_message(payload)
+    
+    # Should log error
+    args, _ = mock_oven.logger.error.call_args
+    assert "Invalid command response:" in args[0]
+
+def test_handle_message_error_invalid(mock_oven):
+    """Test handling ERROR command with invalid payload."""
+    # Missing required errorMessage
+    payload = {
+        "command": "ERROR",
+        "payload": {
+            "errorCode": "500"
+            # Missing errorMessage
+        }
+    }
+    
+    mock_oven._handle_message(payload)
+    
+    # Should log error
+    args, _ = mock_oven.logger.error.call_args
+    assert "Invalid error response:" in args[0]
+
+def test_handle_message_fallback_state_none(mock_oven):
+    """
+    Test handling EVENT_APO_STATE when payload.state is None.
+    This covers the else block in _handle_message (lines 162-163).
+    """
+    payload = {
+        "command": "EVENT_APO_STATE",
+        "payload": {
+            "cookerId": "device123",
+            "state": None,  # Explicitly None to trigger fallback
+            "nodes": {
+                "temperatureBulbs": {
+                    "dry": {"current": {"celsius": 50}}
+                }
+            },
+            "systemInfo": {
+                "firmwareVersion": "2.0.0",
+                "hardwareVersion": "v2"
+            }
+        }
+    }
+
+    # We need to mock the validation to ensure it returns an object with state=None
+    # but nodes and system_info populated from the top level.
+    
+    with patch('anova_oven_sdk.oven.ApoStateResponse') as mock_response_cls:
+        mock_response = Mock()
+        mock_response.payload.cooker_id = "device123"
+        mock_response.payload.state = None
+        
+        # Mock nodes
+        mock_nodes = Mock()
+        mock_nodes.temperature_bulbs.dry.current = {"celsius": 50}
+        mock_response.payload.nodes = mock_nodes
+        
+        # Mock system_info
+        mock_system_info = Mock()
+        mock_system_info.firmware_version = "2.0.0"
+        mock_response.payload.system_info = mock_system_info
+        
+        mock_response_cls.model_validate.return_value = mock_response
+
+        mock_oven._handle_message(payload)
+
+    device = mock_oven.get_device("device123")
+    
+    # Verify nodes update (from fallback path)
+    assert device.nodes.temperature_bulbs.dry.current["celsius"] == 50
+    
+    # Verify system info update (from fallback path)
+    assert device.system_info.firmware_version == "2.0.0"

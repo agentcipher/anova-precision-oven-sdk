@@ -9,7 +9,7 @@ from anova_oven_sdk.models import (
     Temperature, TemperatureRange, celsius_to_fahrenheit, fahrenheit_to_celsius,
     ensure_temperature, HeatingElements, SteamSettings, Timer, Probe, CookStage,
     Device, OvenVersion, TemperatureMode, SteamMode, TimerStartType, VentState,
-    DeviceState
+    DeviceState, RecipeStageConfig
 )
 
 
@@ -600,3 +600,12 @@ class TestEnums:
         assert DeviceState.PAUSED.value == "paused"
         assert DeviceState.COMPLETED.value == "completed"
         assert DeviceState.ERROR.value == "error"
+
+def test_recipe_stage_config_invalid_type():
+    """Test RecipeStageConfig with invalid stage_type."""
+    with pytest.raises(ValueError, match="stage_type must be 'preheat' or 'cook'"):
+        RecipeStageConfig(
+            name="Test",
+            temperature={"value": 100},
+            stage_type="invalid"
+        )        
