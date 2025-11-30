@@ -598,3 +598,74 @@ class TestWebSocketClient:
 
         await client.send_command("TEST_CMD", {}, timeout=5)
         mock_ws.send.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_connect_creates_ssl_context_in_executor(self, client):
+        """Test that SSL context is created in executor for wss:// URLs."""
+        
+        # Mock settings
+        with patch('anova_oven_sdk.client.settings') as mock_settings:
+            mock_settings.ws_url = "wss://test.url"
+            mock_settings.token = "test-token"
+            mock_settings.supported_accessories = ["APO"]
+            mock_settings.connection_timeout = 1.0
+            
+            # Mock websockets.connect
+            with patch('anova_oven_sdk.client.websockets.connect', new_callable=AsyncMock) as mock_ws_connect:
+                
+                # Mock ssl.create_default_context
+                with patch('anova_oven_sdk.client.ssl.create_default_context') as mock_create_context:
+                    mock_context = Mock()
+                    mock_create_context.return_value = mock_context
+                    
+                    with patch('asyncio.get_running_loop') as mock_get_loop:
+                        mock_loop = Mock()
+                        mock_get_loop.return_value = mock_loop
+                        
+                        # Make run_in_executor return a future that resolves to the context
+                        async def async_run_in_executor(executor, func, *args):
+                            return func(*args)
+                        
+                        mock_loop.run_in_executor = AsyncMock(side_effect=async_run_in_executor)
+                        
+                        await client.connect()
+                        
+                        # Verify run_in_executor was called with ssl.create_default_context
+                        mock_loop.run_in_executor.assert_called_once()
+                        args = mock_loop.run_in_executor.call_args[0]
+                        assert args[0] is None  # executor=None
+                        assert args[1] == mock_create_context  # func
+                        
+                        # Verify websockets.connect was called with the context
+                        mock_ws_connect.assert_called_once()
+                        call_kwargs = mock_ws_connect.call_args[1]
+                        assert call_kwargs['ssl'] == mock_context
+
+    @pytest.mark.asyncio
+    async def test_connect_no_ssl_for_ws(self, client):
+        """Test that SSL context is NOT created for ws:// URLs."""
+        
+        # Mock settings
+        with patch('anova_oven_sdk.client.settings') as mock_settings:
+            mock_settings.ws_url = "ws://test.url"
+            mock_settings.token = "test-token"
+            mock_settings.supported_accessories = ["APO"]
+            mock_settings.connection_timeout = 1.0
+            
+            # Mock websockets.connect
+            with patch('anova_oven_sdk.client.websockets.connect', new_callable=AsyncMock) as mock_ws_connect:
+                
+                with patch('asyncio.get_running_loop') as mock_get_loop:
+                    mock_loop = Mock()
+                    mock_get_loop.return_value = mock_loop
+                    mock_loop.run_in_executor = AsyncMock()
+                    
+                    await client.connect()
+                    
+                    # Verify run_in_executor was NOT called
+                    mock_loop.run_in_executor.assert_not_called()
+                    
+                    # Verify websockets.connect was called with ssl=None
+                    mock_ws_connect.assert_called_once()
+                    call_kwargs = mock_ws_connect.call_args[1]
+                    assert call_kwargs['ssl'] is None

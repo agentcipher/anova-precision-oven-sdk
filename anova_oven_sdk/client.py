@@ -5,6 +5,7 @@
 import json
 import asyncio
 import logging
+import ssl
 from typing import Optional, List, Dict, Any, Callable
 from .utils import async_retry, generate_uuid
 from .settings import settings
@@ -46,8 +47,14 @@ class WebSocketClient:
 
         try:
             self.logger.info(f"Connecting to {settings.ws_url} using supported_accessories: {settings.supported_accessories}")
+            
+            ssl_context = None
+            if url.startswith("wss://"):
+                loop = asyncio.get_running_loop()
+                ssl_context = await loop.run_in_executor(None, ssl.create_default_context)
+
             self._ws = await asyncio.wait_for(
-                websockets.connect(url),
+                websockets.connect(url, ssl=ssl_context),
                 timeout=settings.connection_timeout
             )
             self._connected = True
