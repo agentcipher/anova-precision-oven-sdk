@@ -1,0 +1,51 @@
+{
+  "name": "Anova Precision Oven SDK",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "anova-sdk",
+  "workspaceFolder": "/app",
+  // Features to install in the container
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  // Set container-specific settings
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "editor.formatOnSave": true,
+        "files.exclude": {
+          "**/__pycache__": true,
+          "**/*.pyc": true
+        },
+        // Use Ruff for formatting and linting
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff",
+          "editor.codeActionsOnSave": {
+            "source.organizeImports": "explicit",
+            "source.fixAll": "explicit"
+          }
+        },
+        // Ruff settings
+        "ruff.enable": true,
+        "ruff.organizeImports": true,
+        "ruff.fixAll": true
+      },
+      // Extensions to install
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml",
+        "redhat.vscode-yaml"
+      ]
+    }
+  },
+  // Set the user to use in the container
+  "remoteUser": "root",
+  // Environment variables for the dev container
+  "remoteEnv": {
+    "PYTHONUNBUFFERED": "1"
+  }
+}

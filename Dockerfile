@@ -1,15 +1,17 @@
 FROM python:3.11-slim
 
+COPY pyproject.toml /tmp
+
+RUN cd /tmp && \
+    apt update && \
+    apt -y upgrade  && \
+    pip --no-cache-dir install uv && \
+    uv pip install --system --no-cache-dir . && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -f pyproject.toml
+
+# RUN useradd -u ${UID} -m -s /bin/bash ${LOGNAME}
 WORKDIR /app
 
-# Install dependencies
-RUN pip install --no-cache-dir .
-
-# Copy application
-COPY anova_oven_cli.py .
-COPY settings.yaml .
-
-# Create logs directory
-RUN mkdir -p logs
-
-CMD ["python", "anova_oven_cli.py", "discover"]
+CMD ["/bin/bash"]

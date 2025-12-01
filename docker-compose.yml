@@ -1,10 +1,18 @@
 services:
   anova-sdk:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    # Keep container running with stdin open and tty allocated
+    stdin_open: true
+    tty: true
+    
     environment:
-      - ANOVA_ENV=production
+      - ANOVA_ENV=${ANOVA_ENV:-development}
       - ANOVA_TOKEN=${ANOVA_TOKEN}
+      - PYTHONUNBUFFERED=1
+    
     volumes:
-      - ./logs:/app/logs
-      - ./settings.yaml:/app/settings.yaml
-    command: python anova_oven_cli.py discover
+      # Mount entire project for live editing
+      - .:/app
