@@ -12,7 +12,7 @@ from pydantic import (
 from datetime import datetime
 from pathlib import Path
 import yaml
-from .response_models import Nodes, OvenState, SystemInfo, CookData, CookStageInfo
+from .response_models import Nodes, OvenState, SystemInfo, CookSessionState, CookStageInfo
 
 
 class OvenVersion(str, Enum):
@@ -438,7 +438,7 @@ class Device(BaseModel):
     nodes: Optional['Nodes'] = Field(None, description="Detailed device state nodes")
     state_info: Optional['OvenState'] = Field(None, description="High-level state info (mode, temperature unit)")
     system_info: Optional['SystemInfo'] = Field(None, description="System information (firmware, hardware versions)")
-    cook: Optional['CookData'] = Field(None, description="Active cook session data (cook ID, stages, rack position)")
+    cook: Optional['CookSessionState'] = Field(None, description="Active cook session data (cook ID, stages, active stage, rack position)")
 
     # Stage plan recorded by register_cook_plan() for a cook session started
     # via this SDK instance's start_cook(), used to derive
@@ -467,8 +467,9 @@ class Device(BaseModel):
             return None
         if self.cook.rack_position is not None:
             return self.cook.rack_position
-        if self.cook.stages:
-            return self.cook.stages[0].rack_position
+        stage = self.current_stage
+        if stage:
+            return stage.rack_position
         return None
 
     @property
@@ -476,8 +477,11 @@ class Device(BaseModel):
         """
         The currently active stage of the cook session, if any.
 
-        The API reports stages as a sequential list; the first entry
-        is treated as the current stage.
+        For V1 ovens, `cook.active_stage_index` (confirmed against a real
+        multi-stage cook) is the authoritative pointer into the full,
+        stable `cook.stages` list. For V2 ovens (unconfirmed), where
+        `active_stage_index` isn't reported, `stages[0]` is treated as
+        current.
 
         This object (`.title`, `.id`, `.step_type`, `.description`) is
         useful on its own, but it does not say which stage *number* this
@@ -485,6 +489,11 @@ class Device(BaseModel):
         `total_stage_count` for "stage X of Y" progress.
         """
         if not self.cook or not self.cook.stages:
+            return None
+        index = self.cook.active_stage_index
+        if index is not None:
+            if 0 <= index < len(self.cook.stages):
+                return self.cook.stages[index]
             return None
         return self.cook.stages[0]
 
@@ -495,15 +504,16 @@ class Device(BaseModel):
 
         AnovaOven.start_cook() generates the stage ids itself (one per
         stage, in order) and calls this so that total_stage_count/
-        current_stage_index can later resolve "stage X of Y" by matching
-        `current_stage.id` from live EVENT_APO_STATE updates against the
-        ordinals recorded here -- without needing to know whether
-        `cook.stages` is a full plan or a shrinking remainder.
+        current_stage_index have a fallback way to resolve "stage X of Y"
+        for V2 ovens, where `cook.active_stage_index` isn't reported
+        (unconfirmed) -- by matching `current_stage.id` from live
+        EVENT_APO_STATE updates against the ordinals recorded here. V1 ovens
+        don't need this: `cook.active_stage_index` is authoritative.
 
         Only the most recently registered plan is kept. Cook sessions not
         started via this SDK instance (e.g. started from the Anova app)
-        have no plan, and total_stage_count/current_stage_index simply
-        return None for them.
+        have no plan, and total_stage_count/current_stage_index fall back to
+        None for V2 (V1 is unaffected, since it doesn't use the plan).
         """
         self._stage_plan = {
             "cook_id": cook_id,
@@ -520,18 +530,23 @@ class Device(BaseModel):
         """
         Total number of stages in the active cook session, if known.
 
-        Only available for cook sessions started via this SDK instance's
-        start_cook() (see register_cook_plan) -- live EVENT_APO_STATE
-        payloads don't carry a stage count of their own, and `cook.stages`'s
-        relationship to the original stage plan is unverified (it may be the
-        full plan or a shrinking remainder -- see `current_stage`).
+        For V1 ovens, this is `len(cook.stages)` -- the live state reports
+        the full, stable stage plan regardless of progress (confirmed
+        against a real multi-stage cook).
 
-        Returns None if there is no active cook session, or no stage plan
-        was recorded for the active `cook_id` (cook started outside this SDK
-        instance) -- the same "no info available" fallback used elsewhere
+        For V2 ovens (unconfirmed), falls back to the stage plan recorded by
+        register_cook_plan() for cooks started via this SDK instance's
+        start_cook(); returns None for cooks started elsewhere (e.g. the
+        Anova app) -- the same "no info available" fallback used elsewhere
         for things like recipe name.
         """
-        if not self.cook or not self.cook.cook_id:
+        if not self.cook:
+            return None
+
+        if self.cook.stages is not None and self.cook.active_stage_index is not None:
+            return len(self.cook.stages)
+
+        if not self.cook.cook_id:
             return None
         plan = self._stage_plan
         if not plan or plan["cook_id"] != self.cook.cook_id:
@@ -543,15 +558,20 @@ class Device(BaseModel):
         """
         1-based index of `current_stage` within the active cook session, if known.
 
-        Resolved by matching `current_stage.id` against the stage plan
-        recorded by register_cook_plan() for the active `cook_id`. See
-        total_stage_count for when a plan is available.
+        For V1 ovens, derived directly as `cook.active_stage_index + 1`
+        (confirmed against a real multi-stage cook).
 
-        Returns None if there is no active cook session, no current stage,
-        no stage plan for the active `cook_id`, or `current_stage.id` isn't
-        found in the recorded plan.
+        For V2 ovens (unconfirmed), falls back to matching `current_stage.id`
+        against the stage plan recorded by register_cook_plan(). See
+        total_stage_count for when a plan is available.
         """
-        if not self.cook or not self.cook.cook_id or not self.cook.stages:
+        if not self.cook:
+            return None
+
+        if self.cook.active_stage_index is not None:
+            return self.cook.active_stage_index + 1
+
+        if not self.cook.cook_id or not self.cook.stages:
             return None
         plan = self._stage_plan
         if not plan or plan["cook_id"] != self.cook.cook_id:

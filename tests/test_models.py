@@ -574,7 +574,7 @@ class TestDevice:
 
     def test_device_rack_position_from_cook(self):
         """rack_position reflects the active cook session's first stage."""
-        from anova_oven_sdk.response_models import CookData
+        from anova_oven_sdk.response_models import CookSessionState
 
         device = Device(
             cookerId="test-device-123",
@@ -582,7 +582,7 @@ class TestDevice:
             pairedAt="2024-01-01T00:00:00Z",
             type=OvenVersion.V2,
         )
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [{"rackPosition": 5}],
         })
@@ -600,7 +600,7 @@ class TestDevice:
 
     def test_device_current_stage_from_cook(self):
         """current_stage reflects the first entry in the stages list."""
-        from anova_oven_sdk.response_models import CookData
+        from anova_oven_sdk.response_models import CookSessionState
 
         device = Device(
             cookerId="test-device-123",
@@ -608,7 +608,7 @@ class TestDevice:
             pairedAt="2024-01-01T00:00:00Z",
             type=OvenVersion.V2,
         )
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [
                 {"id": "stage-1", "stepType": "stage", "title": "Stage 1 - Initial Toast"},
@@ -636,7 +636,7 @@ class TestDevice:
         registered for the active cook_id (cook started outside this SDK
         instance, e.g. the Anova app).
         """
-        from anova_oven_sdk.response_models import CookData
+        from anova_oven_sdk.response_models import CookSessionState
 
         device = Device(
             cookerId="test-device-123",
@@ -644,7 +644,7 @@ class TestDevice:
             pairedAt="2024-01-01T00:00:00Z",
             type=OvenVersion.V2,
         )
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [{"id": "stage-1", "title": "Sear"}],
         })
@@ -658,7 +658,7 @@ class TestDevice:
         register_cook_plan() (as AnovaOven.start_cook() does), regardless of
         whether the live `cook.stages` list shrinks or stays constant.
         """
-        from anova_oven_sdk.response_models import CookData
+        from anova_oven_sdk.response_models import CookSessionState
 
         device = Device(
             cookerId="test-device-123",
@@ -669,7 +669,7 @@ class TestDevice:
         device.register_cook_plan("cook-1", ["stage-1", "stage-2", "stage-3"])
 
         # Stage 1 of 3
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [
                 {"id": "stage-1", "title": "Sear"},
@@ -682,7 +682,7 @@ class TestDevice:
         assert device.current_stage.id == "stage-1"
 
         # Stage 2 of 3 - list shrinks to the remaining stages
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [
                 {"id": "stage-2", "title": "Roast"},
@@ -694,7 +694,7 @@ class TestDevice:
         assert device.current_stage.id == "stage-2"
 
         # Stage 3 of 3
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [{"id": "stage-3", "title": "Rest"}],
         })
@@ -704,7 +704,7 @@ class TestDevice:
 
     def test_stage_progress_resets_for_new_cook_session(self):
         """A stage plan only applies to the cook_id it was registered for."""
-        from anova_oven_sdk.response_models import CookData
+        from anova_oven_sdk.response_models import CookSessionState
 
         device = Device(
             cookerId="test-device-123",
@@ -714,7 +714,7 @@ class TestDevice:
         )
         device.register_cook_plan("cook-1", ["a", "b", "c"])
 
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
         })
@@ -723,7 +723,7 @@ class TestDevice:
 
         # A new cook session (e.g. started from the Anova app) with no
         # registered plan - no progress info available.
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-2",
             "stages": [{"id": "x"}, {"id": "y"}],
         })
@@ -734,6 +734,53 @@ class TestDevice:
         device.register_cook_plan("cook-2", ["x", "y"])
         assert device.total_stage_count == 2
         assert device.current_stage_index == 1
+
+    def test_stage_progress_v1_active_stage_index(self):
+        """
+        For V1 ovens, `cook.active_stage_index` (confirmed against a real
+        mid-cook capture, see event_apo_state.json) is the authoritative
+        "current stage" pointer into the full, stable `cook.stages` list --
+        no `register_cook_plan()` call needed.
+        """
+        from anova_oven_sdk.response_models import CookSessionState
+
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V1,
+        )
+
+        # Stage 1 of 3 (activeStageIndex == 0)
+        device.cook = CookSessionState.model_validate({
+            "cookId": "cook-1",
+            "activeStageId": "stage-1",
+            "activeStageIndex": 0,
+            "stages": [
+                {"id": "stage-1", "title": "Sear"},
+                {"id": "stage-2", "title": "Roast"},
+                {"id": "stage-3", "title": "Rest"},
+            ],
+        })
+        assert device.total_stage_count == 3
+        assert device.current_stage_index == 1
+        assert device.current_stage.id == "stage-1"
+
+        # Stage 2 of 3 - the full stage list is unchanged, only the pointer
+        # moves.
+        device.cook = CookSessionState.model_validate({
+            "cookId": "cook-1",
+            "activeStageId": "stage-2",
+            "activeStageIndex": 1,
+            "stages": [
+                {"id": "stage-1", "title": "Sear"},
+                {"id": "stage-2", "title": "Roast"},
+                {"id": "stage-3", "title": "Rest"},
+            ],
+        })
+        assert device.total_stage_count == 3
+        assert device.current_stage_index == 2
+        assert device.current_stage.id == "stage-2"
 
 
 class TestEnums:

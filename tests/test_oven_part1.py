@@ -628,7 +628,7 @@ class TestAnovaOvenStartCook:
         built CMD_APO_START payload, so total_stage_count/current_stage_index
         can later resolve "stage X of Y" from EVENT_APO_STATE updates.
         """
-        from anova_oven_sdk.response_models import CookData
+        from anova_oven_sdk.response_models import CookSessionState
 
         oven = AnovaOven()
 
@@ -655,7 +655,7 @@ class TestAnovaOvenStartCook:
             await oven.start_cook("test-123", temperature=200, duration=1800)
 
         # Simulate the live state reporting stage 2 of the cook as current.
-        device.cook = CookData.model_validate({
+        device.cook = CookSessionState.model_validate({
             "cookId": "cook-1",
             "stages": [
                 {"id": "stage-2", "title": "Roast"},

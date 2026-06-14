@@ -270,27 +270,15 @@ class CookData(BaseModel):
     """
     Active cook session data, aggregated from top-level cook session fields.
 
-    `stages` semantics are UNVERIFIED: it is unknown whether this list is
-    the full, constant stage plan for the cook, or shrinks to only the
-    remaining stages as the cook progresses. `Device.current_stage` treats
-    `stages[0]` as "the current stage", which is correct either way only if
-    the list shrinks -- if it's a constant full plan, `stages[0]` would
-    always describe stage 1 regardless of actual progress.
+    This was the SDK's original guess at the live cook session shape, based
+    on the `CMD_APO_START` (outbound) payload structure. A real V1
+    `EVENT_APO_STATE` capture showed the live state instead nests this data
+    under `payload.state.cook`, with additional fields -- see
+    `CookSessionState`, which extends this model and is what `Device.cook`
+    is populated with for V1 ovens.
 
-    `Device.total_stage_count`/`current_stage_index` sidestep this ambiguity
-    for cooks started via `AnovaOven.start_cook()`: the SDK records the
-    ordered stage ids it sent in `CMD_APO_START` (see
-    `Device.register_cook_plan`) and matches `stages[0].id` against that
-    plan, so "stage X of Y" works regardless of how `stages` itself behaves.
-    They return `None` for cooks started outside this SDK instance (e.g. the
-    Anova app), where no such plan exists.
-
-    Confirming the `stages` list behavior itself (for `current_stage`'s own
-    correctness) requires capturing raw `EVENT_APO_STATE` payloads across a
-    real multi-stage cook and checking whether `stages` shrinks, stays
-    constant, or something else as stages progress, and whether
-    `model_extra` on this model or on `CookStageInfo` carries an explicit
-    stage index/count field.
+    This base shape remains the fallback used for V2 ovens, where no `cook`
+    sub-object has been confirmed yet (see `ApoStateResponsePayload.cook`).
     """
     model_config = ConfigDict(populate_by_name=True, extra='allow')
 
@@ -301,14 +289,41 @@ class CookData(BaseModel):
     rack_position: Optional[int] = Field(None, alias="rackPosition")
 
 
+class CookSessionState(CookData):
+    """
+    Active cook session state, as nested under `payload.state.cook` for V1
+    ovens (`payload.type == "oven_v1"`).
+
+    Confirmed against a real V1 `EVENT_APO_STATE` payload captured mid-cook:
+
+    - `stages` is the FULL, STABLE stage plan -- all stages are present
+      regardless of progress; it does not shrink as the cook advances.
+    - `active_stage_index` (0-based) is the authoritative "current stage"
+      pointer: `stages[active_stage_index]` is the current stage, and
+      `active_stage_id` matches `stages[active_stage_index].id`.
+    - No `rack_position` field was observed anywhere in the sample (neither
+      here nor on individual stages) -- `Device.rack_position` may be `None`
+      even for an active cook, depending on recipe/oven.
+
+    Not yet confirmed for V2 ovens (`payload.type == "oven_v2"`) -- no V2
+    `EVENT_APO_STATE` sample with an active cook has been captured. V2 falls
+    back to the flat `CookData` shape, with `active_stage_index` always
+    `None`, until that's verified.
+    """
+    active_stage_id: Optional[str] = Field(None, alias="activeStageId")
+    active_stage_index: Optional[int] = Field(None, alias="activeStageIndex")
+    active_stage_seconds_elapsed: Optional[int] = Field(None, alias="activeStageSecondsElapsed")
+    seconds_elapsed: Optional[int] = Field(None, alias="secondsElapsed")
+    stage_transition_pending_user_action: Optional[bool] = Field(None, alias="stageTransitionPendingUserAction")
+
+
 class ApoStateData(BaseModel):
     """
     Nested state data for V1 ovens.
 
     V1 ovens nest the actual state data under a 'state' key in the payload.
-    Active cook session fields (cookId, originSource, stages, rackPosition)
-    are reported as top-level siblings of 'nodes'/'systemInfo' here, not
-    nested under a 'cook' object.
+    Active cook session state is reported as a nested `cook` object here
+    (see `CookSessionState`), confirmed against a real mid-cook capture.
     """
     model_config = ConfigDict(populate_by_name=True, extra='allow')
 
@@ -319,12 +334,8 @@ class ApoStateData(BaseModel):
     state: Optional[OvenState] = None
     nodes: Optional[Nodes] = None
 
-    # Active cook session fields (present while a cook is running)
-    cook_id: Optional[str] = Field(None, alias="cookId")
-    origin_source: Optional[str] = Field(None, alias="originSource")
-    type: Optional[str] = None
-    stages: Optional[List[CookStageInfo]] = None
-    rack_position: Optional[int] = Field(None, alias="rackPosition")
+    # Active cook session state (present while a cook is running)
+    cook: Optional[CookSessionState] = None
 
 
 
@@ -343,7 +354,13 @@ class ApoStateResponsePayload(BaseModel):
 
     nodes: Optional[Nodes] = None
 
-    # Active cook session fields (V2/flat ovens report these at the payload level)
+    # Active cook session state, if V2 also nests it under `cook` like V1
+    # (unconfirmed -- no V2 sample with an active cook captured yet).
+    cook: Optional[CookSessionState] = None
+
+    # Legacy flat cook session fields, used as a fallback when `cook` above
+    # is absent. Based on the `CMD_APO_START` (outbound) shape rather than a
+    # confirmed live V2 EVENT_APO_STATE capture.
     cook_id: Optional[str] = Field(None, alias="cookId")
     origin_source: Optional[str] = Field(None, alias="originSource")
     stages: Optional[List[CookStageInfo]] = None

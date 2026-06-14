@@ -138,58 +138,57 @@ class AnovaOven:
                 if device:
                     self.logger.info(f"Received state update for {device.name}")
                     
-                    from .response_models import ApoStateData, OvenState, SystemInfo, CookData
+                    from .response_models import ApoStateData, OvenState, SystemInfo, CookSessionState
 
                     # Determine data source based on payload structure (V1 nested vs V2 flat)
                     payload_state = response.payload.state
-                    
+
                     nodes = None
                     oven_state = None
                     system_info = None
-                    cook_source = None
+                    cook = None
 
                     if isinstance(payload_state, ApoStateData):
-                        # V1 Nested Structure
+                        # V1 Nested Structure. Active cook session state is
+                        # nested under state.cook (confirmed against a real
+                        # mid-cook capture).
                         nodes = payload_state.nodes
                         oven_state = payload_state.state
                         system_info = payload_state.system_info
-                        cook_source = payload_state
+                        cook = payload_state.cook
                     elif isinstance(payload_state, OvenState):
                         # V2 Flat Structure (state is just OvenState)
                         nodes = response.payload.nodes
                         oven_state = payload_state
                         system_info = response.payload.system_info
-                        cook_source = response.payload
+                        cook = response.payload.cook
                     else:
                         # Fallback (state might be None)
                         nodes = response.payload.nodes
                         system_info = response.payload.system_info
+                        cook = response.payload.cook
+
+                    # V2/fallback: no nested `cook` object confirmed yet, so
+                    # fall back to the legacy flat cook session fields
+                    # reported alongside nodes/systemInfo.
+                    if cook is None and not isinstance(payload_state, ApoStateData):
                         cook_source = response.payload
+                        if cook_source.cook_id:
+                            cook = CookSessionState(
+                                cookId=cook_source.cook_id,
+                                originSource=cook_source.origin_source,
+                                stages=cook_source.stages,
+                                rackPosition=cook_source.rack_position,
+                            )
 
-                    # Active cook session fields are reported as top-level
-                    # siblings of 'nodes'/'systemInfo' rather than nested
-                    # under a 'cook' object.
-                    cook = None
-                    if cook_source and cook_source.cook_id:
-                        cook = CookData(
-                            cookId=cook_source.cook_id,
-                            originSource=cook_source.origin_source,
-                            type=getattr(cook_source, 'type', None) if isinstance(cook_source, ApoStateData) else None,
-                            stages=cook_source.stages,
-                            rackPosition=cook_source.rack_position,
-                        )
-
-                        # Diagnostic logging for the cook-session stage
-                        # tracking ambiguity: capture how many stages are
-                        # reported and any fields the typed models don't
-                        # recognize (via extra='allow'), so a real
-                        # multi-stage cook can be used to determine whether
-                        # `stages` shrinks as the cook progresses and
-                        # whether the API sends an explicit stage
-                        # index/count anywhere.
+                    if cook:
+                        # Diagnostic logging to help verify the V2 cook
+                        # session shape against the V1 `state.cook` shape
+                        # (CookSessionState) once a V2 sample with an active
+                        # cook is captured.
                         self.logger.debug(
-                            "Cook session %s: %d stage(s) reported, extra=%s",
-                            cook.cook_id, len(cook.stages or []), cook.model_extra,
+                            "Cook session %s: %d stage(s), activeStageIndex=%s, extra=%s",
+                            cook.cook_id, len(cook.stages or []), cook.active_stage_index, cook.model_extra,
                         )
                         for i, stage in enumerate(cook.stages or []):
                             self.logger.debug(
