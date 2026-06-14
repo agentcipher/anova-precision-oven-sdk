@@ -5,6 +5,7 @@ COPY pyproject.toml /tmp
 RUN cd /tmp && \
     apt update && \
     apt -y upgrade  && \
+    apt -y install --no-install-recommends openssh-client && \
     pip --no-cache-dir install uv && \
     uv pip install --system --no-cache-dir . && \
     apt-get clean && \

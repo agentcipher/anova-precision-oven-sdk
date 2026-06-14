@@ -16,3 +16,5 @@ services:
     volumes:
       # Mount entire project for live editing
       - .:/app
+      # Forward host SSH keys/known_hosts for git over SSH (read-only)
+      - ${HOME}/.ssh:/root/.ssh:ro
