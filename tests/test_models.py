@@ -619,6 +619,122 @@ class TestDevice:
         assert device.current_stage.title == "Stage 1 - Initial Toast"
         assert device.current_stage.step_type == "stage"
 
+    def test_stage_progress_without_cook(self):
+        """total_stage_count/current_stage_index are None without an active cook."""
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        assert device.total_stage_count is None
+        assert device.current_stage_index is None
+
+    def test_stage_progress_without_plan(self):
+        """
+        total_stage_count/current_stage_index are None when no stage plan was
+        registered for the active cook_id (cook started outside this SDK
+        instance, e.g. the Anova app).
+        """
+        from anova_oven_sdk.response_models import CookData
+
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [{"id": "stage-1", "title": "Sear"}],
+        })
+        assert device.total_stage_count is None
+        assert device.current_stage_index is None
+
+    def test_stage_progress_across_multi_stage_cook(self):
+        """
+        total_stage_count/current_stage_index resolve "stage X of Y" by
+        matching `current_stage.id` against the stage plan recorded by
+        register_cook_plan() (as AnovaOven.start_cook() does), regardless of
+        whether the live `cook.stages` list shrinks or stays constant.
+        """
+        from anova_oven_sdk.response_models import CookData
+
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        device.register_cook_plan("cook-1", ["stage-1", "stage-2", "stage-3"])
+
+        # Stage 1 of 3
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [
+                {"id": "stage-1", "title": "Sear"},
+                {"id": "stage-2", "title": "Roast"},
+                {"id": "stage-3", "title": "Rest"},
+            ],
+        })
+        assert device.total_stage_count == 3
+        assert device.current_stage_index == 1
+        assert device.current_stage.id == "stage-1"
+
+        # Stage 2 of 3 - list shrinks to the remaining stages
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [
+                {"id": "stage-2", "title": "Roast"},
+                {"id": "stage-3", "title": "Rest"},
+            ],
+        })
+        assert device.total_stage_count == 3
+        assert device.current_stage_index == 2
+        assert device.current_stage.id == "stage-2"
+
+        # Stage 3 of 3
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [{"id": "stage-3", "title": "Rest"}],
+        })
+        assert device.total_stage_count == 3
+        assert device.current_stage_index == 3
+        assert device.current_stage.id == "stage-3"
+
+    def test_stage_progress_resets_for_new_cook_session(self):
+        """A stage plan only applies to the cook_id it was registered for."""
+        from anova_oven_sdk.response_models import CookData
+
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        device.register_cook_plan("cook-1", ["a", "b", "c"])
+
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+        })
+        assert device.total_stage_count == 3
+        assert device.current_stage_index == 1
+
+        # A new cook session (e.g. started from the Anova app) with no
+        # registered plan - no progress info available.
+        device.cook = CookData.model_validate({
+            "cookId": "cook-2",
+            "stages": [{"id": "x"}, {"id": "y"}],
+        })
+        assert device.total_stage_count is None
+        assert device.current_stage_index is None
+
+        # Registering a new plan for cook-2 makes progress available again.
+        device.register_cook_plan("cook-2", ["x", "y"])
+        assert device.total_stage_count == 2
+        assert device.current_stage_index == 1
+
 
 class TestEnums:
     """Test all enum types."""

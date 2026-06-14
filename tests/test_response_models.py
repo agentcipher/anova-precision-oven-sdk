@@ -119,6 +119,25 @@ class TestCookData:
         assert cook.cook_id is None
         assert cook.stages is None
 
+    def test_cook_data_preserves_unrecognized_fields(self):
+        """
+        extra='allow' surfaces fields the typed models don't recognize yet via
+        model_extra. This matters for the open question of whether the API
+        sends an explicit stage index/count (e.g. currentStageIndex,
+        totalStages) anywhere in the cook payload - if it does, it will show
+        up here rather than being silently dropped.
+        """
+        cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [
+                {"id": "stage-1", "title": "Roast", "currentStageIndex": 1, "totalStages": 3}
+            ],
+            "currentStageIndex": 1,
+            "totalStages": 3,
+        })
+        assert cook.model_extra == {"currentStageIndex": 1, "totalStages": 3}
+        assert cook.stages[0].model_extra == {"currentStageIndex": 1, "totalStages": 3}
+
 
 class TestApoStateResponse:
     """Test ApoStateResponse with raw payloads."""

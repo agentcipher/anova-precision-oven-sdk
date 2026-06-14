@@ -267,7 +267,31 @@ class CookStageInfo(BaseModel):
 
 
 class CookData(BaseModel):
-    """Active cook session data, aggregated from top-level cook session fields."""
+    """
+    Active cook session data, aggregated from top-level cook session fields.
+
+    `stages` semantics are UNVERIFIED: it is unknown whether this list is
+    the full, constant stage plan for the cook, or shrinks to only the
+    remaining stages as the cook progresses. `Device.current_stage` treats
+    `stages[0]` as "the current stage", which is correct either way only if
+    the list shrinks -- if it's a constant full plan, `stages[0]` would
+    always describe stage 1 regardless of actual progress.
+
+    `Device.total_stage_count`/`current_stage_index` sidestep this ambiguity
+    for cooks started via `AnovaOven.start_cook()`: the SDK records the
+    ordered stage ids it sent in `CMD_APO_START` (see
+    `Device.register_cook_plan`) and matches `stages[0].id` against that
+    plan, so "stage X of Y" works regardless of how `stages` itself behaves.
+    They return `None` for cooks started outside this SDK instance (e.g. the
+    Anova app), where no such plan exists.
+
+    Confirming the `stages` list behavior itself (for `current_stage`'s own
+    correctness) requires capturing raw `EVENT_APO_STATE` payloads across a
+    real multi-stage cook and checking whether `stages` shrinks, stays
+    constant, or something else as stages progress, and whether
+    `model_extra` on this model or on `CookStageInfo` carries an explicit
+    stage index/count field.
+    """
     model_config = ConfigDict(populate_by_name=True, extra='allow')
 
     cook_id: Optional[str] = Field(None, alias="cookId")

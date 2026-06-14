@@ -1,5 +1,9 @@
 # Changelog
 
+## [2026.06.1]
+- Added `Device.total_stage_count` and `Device.current_stage_index` for "stage X of Y" cook progress. For cooks started via `AnovaOven.start_cook()`, these are resolved by matching the live `current_stage.id` against the ordered stage plan recorded at `CMD_APO_START` time (`Device.register_cook_plan`); they return `None` for cooks started outside this SDK instance (e.g. the Anova app)
+- Added debug logging of cook session stage counts and unrecognized (`model_extra`) fields on `EVENT_APO_STATE` updates, to help verify `cook.stages` semantics (full plan vs. shrinking remainder) against a real multi-stage cook
+
 ## [2026.06.0]
 - Added `current`/`setpoint` temperature readings to `ProbeState` for the temperature probe
 - Added `start_type` (timer start trigger) to `TimerState`

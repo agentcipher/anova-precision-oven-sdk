@@ -179,6 +179,24 @@ class AnovaOven:
                             rackPosition=cook_source.rack_position,
                         )
 
+                        # Diagnostic logging for the cook-session stage
+                        # tracking ambiguity: capture how many stages are
+                        # reported and any fields the typed models don't
+                        # recognize (via extra='allow'), so a real
+                        # multi-stage cook can be used to determine whether
+                        # `stages` shrinks as the cook progresses and
+                        # whether the API sends an explicit stage
+                        # index/count anywhere.
+                        self.logger.debug(
+                            "Cook session %s: %d stage(s) reported, extra=%s",
+                            cook.cook_id, len(cook.stages or []), cook.model_extra,
+                        )
+                        for i, stage in enumerate(cook.stages or []):
+                            self.logger.debug(
+                                "  stage[%d]: id=%s title=%r rackPosition=%s extra=%s",
+                                i, stage.id, stage.title, stage.rack_position, stage.model_extra,
+                            )
+
                     # Update nodes
                     if nodes:
                         device.nodes = nodes
@@ -341,6 +359,15 @@ class AnovaOven:
         # Log the full command payload for debugging
         import json
         self.logger.debug(f"CMD_APO_START payload:\n{json.dumps(payload, indent=2, default=str)}")
+
+        # Record the cook_id -> ordered stage id mapping so total_stage_count/
+        # current_stage_index can later resolve "stage X of Y" from live
+        # EVENT_APO_STATE updates (see Device.register_cook_plan).
+        start_payload = payload.get("payload", {})
+        cook_id = start_payload.get("cookId")
+        if cook_id:
+            stage_ids = [stage.get("id") for stage in start_payload.get("stages", [])]
+            device.register_cook_plan(cook_id, stage_ids)
 
         await self.client.send_command("CMD_APO_START", payload, wait_response=wait_for_response)
 

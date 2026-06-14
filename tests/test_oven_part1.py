@@ -622,6 +622,50 @@ class TestAnovaOvenStartCook:
             mock_client.send_command.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_start_cook_registers_stage_plan(self, mock_settings, mock_client, mock_logger):
+        """
+        start_cook() records the cookId -> ordered stage id mapping from the
+        built CMD_APO_START payload, so total_stage_count/current_stage_index
+        can later resolve "stage X of Y" from EVENT_APO_STATE updates.
+        """
+        from anova_oven_sdk.response_models import CookData
+
+        oven = AnovaOven()
+
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+
+        with patch.object(oven.command_builder, 'build_start_command') as mock_build:
+            mock_build.return_value = {
+                "payload": {
+                    "cookId": "cook-1",
+                    "stages": [
+                        {"id": "stage-1", "title": "Sear"},
+                        {"id": "stage-2", "title": "Roast"},
+                        {"id": "stage-3", "title": "Rest"},
+                    ],
+                }
+            }
+
+            await oven.start_cook("test-123", temperature=200, duration=1800)
+
+        # Simulate the live state reporting stage 2 of the cook as current.
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [
+                {"id": "stage-2", "title": "Roast"},
+                {"id": "stage-3", "title": "Rest"},
+            ],
+        })
+        assert device.total_stage_count == 3
+        assert device.current_stage_index == 2
+
+    @pytest.mark.asyncio
     async def test_start_cook_device_not_found(self, mock_settings, mock_client, mock_logger):
         """Test cook with non-existent device."""
         oven = AnovaOven()
