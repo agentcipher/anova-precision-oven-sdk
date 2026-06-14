@@ -561,6 +561,64 @@ class TestDevice:
         assert device.target_temperature == 200.0
         assert device.last_update is not None
 
+    def test_device_rack_position_without_cook(self):
+        """rack_position is None when no cook session is active."""
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        assert device.cook is None
+        assert device.rack_position is None
+
+    def test_device_rack_position_from_cook(self):
+        """rack_position reflects the active cook session's first stage."""
+        from anova_oven_sdk.response_models import CookData
+
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [{"rackPosition": 5}],
+        })
+        assert device.rack_position == 5
+
+    def test_device_current_stage_without_cook(self):
+        """current_stage is None when no cook session is active."""
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        assert device.current_stage is None
+
+    def test_device_current_stage_from_cook(self):
+        """current_stage reflects the first entry in the stages list."""
+        from anova_oven_sdk.response_models import CookData
+
+        device = Device(
+            cookerId="test-device-123",
+            name="My Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2,
+        )
+        device.cook = CookData.model_validate({
+            "cookId": "cook-1",
+            "stages": [
+                {"id": "stage-1", "stepType": "stage", "title": "Stage 1 - Initial Toast"},
+                {"id": "stage-2", "stepType": "stage", "title": "Stage 2 - Steam Finish"},
+            ],
+        })
+        assert device.current_stage.id == "stage-1"
+        assert device.current_stage.title == "Stage 1 - Initial Toast"
+        assert device.current_stage.step_type == "stage"
+
 
 class TestEnums:
     """Test all enum types."""

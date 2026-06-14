@@ -443,7 +443,10 @@ def test_handle_message_nested_state(mock_oven):
         mock_nodes = Mock()
         mock_nodes.temperature_bulbs.dry.current = {"celsius": 100}
         mock_nested_state.nodes = mock_nodes
-        
+
+        # No active cook session
+        mock_nested_state.cook_id = None
+
         # Assign the nested state to the payload
         mock_response.payload.state = mock_nested_state
         
@@ -584,7 +587,10 @@ def test_handle_message_fallback_state_none(mock_oven):
         mock_system_info = Mock()
         mock_system_info.firmware_version = "2.0.0"
         mock_response.payload.system_info = mock_system_info
-        
+
+        # No active cook session
+        mock_response.payload.cook_id = None
+
         mock_response_cls.model_validate.return_value = mock_response
 
         mock_oven._handle_message(payload)

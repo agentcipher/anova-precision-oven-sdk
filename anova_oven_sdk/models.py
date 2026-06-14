@@ -12,7 +12,7 @@ from pydantic import (
 from datetime import datetime
 from pathlib import Path
 import yaml
-from .response_models import Nodes, OvenState, SystemInfo
+from .response_models import Nodes, OvenState, SystemInfo, CookData, CookStageInfo
 
 
 class OvenVersion(str, Enum):
@@ -438,6 +438,7 @@ class Device(BaseModel):
     nodes: Optional['Nodes'] = Field(None, description="Detailed device state nodes")
     state_info: Optional['OvenState'] = Field(None, description="High-level state info (mode, temperature unit)")
     system_info: Optional['SystemInfo'] = Field(None, description="System information (firmware, hardware versions)")
+    cook: Optional['CookData'] = Field(None, description="Active cook session data (cook ID, stages, rack position)")
 
     @property
     def id(self) -> str:
@@ -453,6 +454,29 @@ class Device(BaseModel):
     def is_cooking(self) -> bool:
         """Check if currently cooking."""
         return self.state in [DeviceState.COOKING, DeviceState.PREHEATING]
+
+    @property
+    def rack_position(self) -> Optional[int]:
+        """Rack position for the active cook session, if available."""
+        if not self.cook:
+            return None
+        if self.cook.rack_position is not None:
+            return self.cook.rack_position
+        if self.cook.stages:
+            return self.cook.stages[0].rack_position
+        return None
+
+    @property
+    def current_stage(self) -> Optional['CookStageInfo']:
+        """
+        The currently active stage of the cook session, if any.
+
+        The API reports stages as a sequential list; the first entry
+        is treated as the current stage.
+        """
+        if not self.cook or not self.cook.stages:
+            return None
+        return self.cook.stages[0]
 
 
 class RecipeStageConfig(BaseModel):

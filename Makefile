@@ -1,4 +1,4 @@
-.PHONY: help install install-dev test test-verbose test-coverage test-parallel clean lint format type-check quality pre-commit all coverage-html coverage-report watch-tests
+.PHONY: help install install-dev test test-verbose test-coverage test-parallel clean lint format type-check quality pre-commit all coverage-html coverage-report watch-tests twine-check publish-test publish
 
 # Default target
 .DEFAULT_GOAL := help
@@ -208,6 +208,35 @@ build: clean ## Build package
 	pip install build
 	python -m build
 	@echo "$(GREEN)✓ Package built in dist/$(NC)"
+
+# ============================================================================
+# Publishing
+# ============================================================================
+# Authentication: twine reads credentials from ~/.pypirc, or from the
+# TWINE_USERNAME / TWINE_PASSWORD environment variables. For PyPI/TestPyPI
+# API tokens, set TWINE_USERNAME=__token__ and TWINE_PASSWORD=<token>.
+# Generate tokens at:
+#   TestPyPI: https://test.pypi.org/manage/account/#api-tokens
+#   PyPI:     https://pypi.org/manage/account/#api-tokens
+twine-check: build ## Build and validate distributions with twine
+	@echo "$(BLUE)Checking package with twine...$(NC)"
+	pip install --quiet twine
+	twine check dist/*
+	@echo "$(GREEN)✓ Package passes twine checks$(NC)"
+
+publish-test: twine-check ## Build and upload to TestPyPI
+	@echo "$(BLUE)Uploading to TestPyPI...$(NC)"
+	twine upload --repository testpypi dist/*
+	@echo "$(GREEN)✓ Published to TestPyPI$(NC)"
+	@echo "$(YELLOW)Verify with: pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple anova-precision-oven-sdk$(NC)"
+
+publish: twine-check ## Build and upload to PyPI (production - bump version in pyproject.toml first!)
+	@echo "$(RED)About to publish to PRODUCTION PyPI$(NC)"
+	@echo "$(YELLOW)Press Ctrl+C now to abort, or wait 5 seconds to continue...$(NC)"
+	@sleep 5
+	twine upload dist/*
+	@echo "$(GREEN)✓ Published to PyPI$(NC)"
+	@echo "$(YELLOW)Verify with: pip install anova-precision-oven-sdk$(NC)"
 
 # ============================================================================
 # Info

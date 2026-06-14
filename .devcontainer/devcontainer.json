@@ -1,4 +1,4 @@
-{
+  {
   "name": "Anova Precision Oven SDK",
   "dockerComposeFile": "../docker-compose.yml",
   "service": "anova-sdk",
@@ -6,7 +6,11 @@
   // Features to install in the container
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
-    "ghcr.io/devcontainers/features/github-cli:1": {}
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts"
+    },
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
   },
   // Set container-specific settings
   "customizations": {

@@ -129,6 +129,7 @@ class TimerState(BaseModel):
     mode: str
     initial: int
     current: int
+    start_type: Optional[str] = Field(None, alias="startType")
 
 
 class ProbeState(BaseModel):
@@ -136,6 +137,8 @@ class ProbeState(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     connected: bool
+    current: Optional[Dict[str, float]] = None
+    setpoint: Optional[Dict[str, float]] = None
 
 
 class SteamGeneratorState(BaseModel):
@@ -143,6 +146,7 @@ class SteamGeneratorState(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     current: Optional[float] = None
+    setpoint: Optional[float] = None
     failed: Optional[bool] = None
     overheated: Optional[bool] = None
     celsius: Optional[float] = None
@@ -157,6 +161,7 @@ class SteamGenerators(BaseModel):
 
     mode: str
     relative_humidity: Optional[SteamGeneratorState] = Field(None, alias="relativeHumidity")
+    steam_percentage: Optional[SteamGeneratorState] = Field(None, alias="steamPercentage")
     evaporator: SteamGeneratorState
     boiler: SteamGeneratorState
 
@@ -248,11 +253,38 @@ class Nodes(BaseModel):
     user_interface_circuit: UserInterfaceCircuitState = Field(..., alias="userInterfaceCircuit")
 
 
+class CookStageInfo(BaseModel):
+    """Information about a single stage of an active cook session."""
+    model_config = ConfigDict(populate_by_name=True, extra='allow')
+
+    id: Optional[str] = None
+    step_type: Optional[str] = Field(None, alias="stepType")
+    type: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    rack_position: Optional[int] = Field(None, alias="rackPosition")
+    user_action_required: Optional[bool] = Field(None, alias="userActionRequired")
+
+
+class CookData(BaseModel):
+    """Active cook session data, aggregated from top-level cook session fields."""
+    model_config = ConfigDict(populate_by_name=True, extra='allow')
+
+    cook_id: Optional[str] = Field(None, alias="cookId")
+    origin_source: Optional[str] = Field(None, alias="originSource")
+    type: Optional[str] = None
+    stages: Optional[List[CookStageInfo]] = None
+    rack_position: Optional[int] = Field(None, alias="rackPosition")
+
+
 class ApoStateData(BaseModel):
     """
     Nested state data for V1 ovens.
-    
+
     V1 ovens nest the actual state data under a 'state' key in the payload.
+    Active cook session fields (cookId, originSource, stages, rackPosition)
+    are reported as top-level siblings of 'nodes'/'systemInfo' here, not
+    nested under a 'cook' object.
     """
     model_config = ConfigDict(populate_by_name=True, extra='allow')
 
@@ -262,7 +294,13 @@ class ApoStateData(BaseModel):
     system_info: Optional[SystemInfo] = Field(None, alias="systemInfo")
     state: Optional[OvenState] = None
     nodes: Optional[Nodes] = None
-    cook: Optional[Dict[str, Any]] = None
+
+    # Active cook session fields (present while a cook is running)
+    cook_id: Optional[str] = Field(None, alias="cookId")
+    origin_source: Optional[str] = Field(None, alias="originSource")
+    type: Optional[str] = None
+    stages: Optional[List[CookStageInfo]] = None
+    rack_position: Optional[int] = Field(None, alias="rackPosition")
 
 
 
@@ -275,11 +313,17 @@ class ApoStateResponsePayload(BaseModel):
     version: Optional[int] = None
     updated_timestamp: Optional[str] = Field(None, alias="updatedTimestamp")
     system_info: Optional[SystemInfo] = Field(None, alias="systemInfo")
-    
+
     # State can be OvenState (V2/Flat) or ApoStateData (V1/Nested)
     state: Optional[Union[ApoStateData, OvenState]] = None
-    
+
     nodes: Optional[Nodes] = None
+
+    # Active cook session fields (V2/flat ovens report these at the payload level)
+    cook_id: Optional[str] = Field(None, alias="cookId")
+    origin_source: Optional[str] = Field(None, alias="originSource")
+    stages: Optional[List[CookStageInfo]] = None
+    rack_position: Optional[int] = Field(None, alias="rackPosition")
 
 
 class ApoStateResponse(BaseResponse):

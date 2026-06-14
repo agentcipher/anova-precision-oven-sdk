@@ -138,7 +138,7 @@ class AnovaOven:
                 if device:
                     self.logger.info(f"Received state update for {device.name}")
                     
-                    from .response_models import ApoStateData, OvenState, SystemInfo
+                    from .response_models import ApoStateData, OvenState, SystemInfo, CookData
 
                     # Determine data source based on payload structure (V1 nested vs V2 flat)
                     payload_state = response.payload.state
@@ -146,21 +146,38 @@ class AnovaOven:
                     nodes = None
                     oven_state = None
                     system_info = None
-                    
+                    cook_source = None
+
                     if isinstance(payload_state, ApoStateData):
                         # V1 Nested Structure
                         nodes = payload_state.nodes
                         oven_state = payload_state.state
                         system_info = payload_state.system_info
+                        cook_source = payload_state
                     elif isinstance(payload_state, OvenState):
                         # V2 Flat Structure (state is just OvenState)
                         nodes = response.payload.nodes
                         oven_state = payload_state
                         system_info = response.payload.system_info
+                        cook_source = response.payload
                     else:
                         # Fallback (state might be None)
                         nodes = response.payload.nodes
                         system_info = response.payload.system_info
+                        cook_source = response.payload
+
+                    # Active cook session fields are reported as top-level
+                    # siblings of 'nodes'/'systemInfo' rather than nested
+                    # under a 'cook' object.
+                    cook = None
+                    if cook_source and cook_source.cook_id:
+                        cook = CookData(
+                            cookId=cook_source.cook_id,
+                            originSource=cook_source.origin_source,
+                            type=getattr(cook_source, 'type', None) if isinstance(cook_source, ApoStateData) else None,
+                            stages=cook_source.stages,
+                            rackPosition=cook_source.rack_position,
+                        )
 
                     # Update nodes
                     if nodes:
@@ -191,6 +208,9 @@ class AnovaOven:
                     # Update system_info
                     if system_info:
                         device.system_info = system_info
+
+                    # Update cook session data
+                    device.cook = cook
 
                     # Update timestamp
                     device.last_update = datetime.now()
