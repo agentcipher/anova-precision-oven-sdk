@@ -400,21 +400,45 @@ class TestWebSocketClient:
     @pytest.mark.asyncio
     async def test_reconnect_success(self, client):
         """Test successful reconnection."""
-        with patch.object(client, 'connect', new_callable=AsyncMock) as mock_connect:
+
+        async def fake_connect_once():
+            client._connected = True
+
+        with patch.object(client, '_connect_once', side_effect=fake_connect_once) as mock_connect:
             await client._reconnect()
             mock_connect.assert_called_once()
+            assert client._connected is True
 
     @pytest.mark.asyncio
     async def test_reconnect_failure(self, client, logger):
-        """Test failed reconnection."""
+        """Test failed reconnection retries with backoff until connect succeeds."""
+        attempts = 0
 
-        async def failing_connect():
-            raise Exception("Reconnect failed")
+        async def flaky_connect_once():
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise Exception("Reconnect failed")
+            client._connected = True
 
-        with patch.object(client, 'connect', side_effect=failing_connect):
+        with patch.object(client, '_connect_once', side_effect=flaky_connect_once):
             with patch.object(logger, 'error') as mock_error:
+                with patch('anova_oven_sdk.client.asyncio.sleep', new_callable=AsyncMock):
+                    await client._reconnect()
+                    mock_error.assert_called_once()
+                    assert attempts == 2
+                    assert client._connected is True
+
+    @pytest.mark.asyncio
+    async def test_reconnect_does_not_retry_inside_connect(self, client, logger):
+        """`_reconnect` must not trigger `connect()`'s own bounded retry —
+        only `_reconnect`'s own backoff loop should retry."""
+        with patch.object(client, 'connect', new_callable=AsyncMock) as mock_public_connect:
+            with patch.object(client, '_connect_once', new_callable=AsyncMock) as mock_connect_once:
+                mock_connect_once.side_effect = lambda: setattr(client, '_connected', True)
                 await client._reconnect()
-                mock_error.assert_called()
+                mock_connect_once.assert_called_once()
+                mock_public_connect.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handle_message_basic(self, client):

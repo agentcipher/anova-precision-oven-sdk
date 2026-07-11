@@ -34,19 +34,18 @@ def mock_client():
 def setup_oven(mock_settings):
     """Setup oven with device."""
     with patch('anova_oven_sdk.oven.WebSocketClient'):
-        with patch('anova_oven_sdk.oven.setup_logging'):
-            oven = AnovaOven()
-            oven.client = AsyncMock()
-            
-            device = Device(
-                cookerId="test-123",
-                name="Test Oven",
-                pairedAt="2024-01-01T00:00:00Z",
-                type=OvenVersion.V2
-            )
-            oven._devices["test-123"] = device
-            
-            yield oven
+        oven = AnovaOven()
+        oven.client = AsyncMock()
+
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+
+        yield oven
 
 
 class TestAnovaOvenStartCookAdvanced:
@@ -347,38 +346,36 @@ class TestAnovaOvenContextManager:
     @pytest.mark.asyncio
     async def test_context_manager_enter(self, mock_settings, mock_client):
         """Test context manager __aenter__."""
-        with patch('anova_oven_sdk.oven.setup_logging'):
-            async with AnovaOven() as oven:
-                pass
+        async with AnovaOven() as oven:
+            pass
 
-            oven.client.connect.assert_called_once()
+        oven.client.connect.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_context_manager_exit(self, mock_settings, mock_client):
         """Test context manager __aexit__."""
-        with patch('anova_oven_sdk.oven.setup_logging'):
-            async with AnovaOven() as oven:
-                pass
+        async with AnovaOven() as oven:
+            pass
 
-            oven.client.disconnect.assert_called_once()
+        oven.client.disconnect.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_context_manager_with_exception(self, mock_settings, mock_client):
         """Test context manager handles exceptions."""
-        with patch('anova_oven_sdk.oven.setup_logging'):
-            try:
-                async with AnovaOven() as oven:
-                    raise ValueError("Test error")
-            except ValueError:
-                pass
+        try:
+            async with AnovaOven() as oven:
+                raise ValueError("Test error")
+        except ValueError:
+            pass
 
-            # Should still disconnect
-            oven.client.disconnect.assert_called_once()
+        # Should still disconnect
+        oven.client.disconnect.assert_called_once()
 
 @pytest.fixture
 def mock_oven():
     """Create a mock oven instance with mocked dependencies."""
-    with patch('anova_oven_sdk.oven.setup_logging'), \
+    logger_instance = Mock()
+    with patch('anova_oven_sdk.oven.logger', logger_instance), \
          patch('anova_oven_sdk.oven.WebSocketClient'), \
          patch('anova_oven_sdk.oven.settings'):
         oven = AnovaOven()

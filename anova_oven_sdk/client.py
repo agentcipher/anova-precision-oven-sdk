@@ -36,7 +36,16 @@ class WebSocketClient:
 
     @async_retry()
     async def connect(self) -> None:
-        """Connect to WebSocket server."""
+        """Connect to WebSocket server, retrying a bounded number of times."""
+        await self._connect_once()
+
+    async def _connect_once(self) -> None:
+        """Make a single connection attempt with no retry of its own.
+
+        Used directly by `connect()` (wrapped in a bounded retry) and by
+        `_reconnect()` (wrapped in its own unbounded backoff loop) so retry
+        behavior only ever happens at one layer at a time.
+        """
         if self.is_connected:
             self.logger.warning("Already connected")
             return
@@ -47,7 +56,7 @@ class WebSocketClient:
 
         try:
             self.logger.info(f"Connecting to {settings.ws_url} using supported_accessories: {settings.supported_accessories}")
-            
+
             ssl_context = None
             if url.startswith("wss://"):
                 loop = asyncio.get_running_loop()
@@ -109,12 +118,23 @@ class WebSocketClient:
             self._connected = False
 
     async def _reconnect(self) -> None:
-        """Attempt reconnection."""
-        self.logger.info("Reconnecting...")
-        try:
-            await self.connect()
-        except Exception as e:
-            self.logger.error(f"Reconnect failed: {e}")
+        """Retry a single connection attempt indefinitely with backoff.
+
+        Calls `_connect_once()` rather than `connect()` so retries only
+        happen at this layer, not also inside `connect()`'s own bounded
+        `@async_retry`.
+        """
+        delay = settings.get('retry_delay', 1.0)
+        backoff = settings.get('retry_backoff', 2.0)
+        max_delay = 60.0
+        while not self._connected:
+            try:
+                self.logger.info("Reconnecting...")
+                await self._connect_once()
+            except Exception as e:
+                self.logger.error(f"Reconnect failed: {e}, retrying in {delay:.1f}s")
+                await asyncio.sleep(delay)
+                delay = min(delay * backoff, max_delay)
 
     async def _handle_message(self, data: Dict[str, Any]) -> None:
         """Handle incoming message."""

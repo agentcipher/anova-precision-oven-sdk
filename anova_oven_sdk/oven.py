@@ -3,6 +3,7 @@
 # ============================================================================
 from .settings import settings
 import asyncio
+import logging
 from typing import Optional, List, Dict, Any, Union
 from .exceptions import ConfigurationError, DeviceNotFoundError
 from .commands import CommandBuilder
@@ -10,9 +11,13 @@ from .client import WebSocketClient
 from .models import Device, CookStage, OvenVersion, Probe, Temperature, TimerStartType, Timer, HeatingElements, \
     TemperatureMode, ensure_temperature
 from .response_models import DeviceListResponse, ApoStateResponse, CommandResponse, ErrorResponse
-from .logging_config import setup_logging
+from .logging_config import TokenMaskingFilter
 from .utils import get_masked_token
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
+if not any(isinstance(f, TokenMaskingFilter) for f in logger.filters):
+    logger.addFilter(TokenMaskingFilter())
 
 
 class AnovaOven:
@@ -59,7 +64,7 @@ class AnovaOven:
         except Exception as e:
             raise ConfigurationError(f"Configuration validation failed: {e}")
 
-        self.logger = setup_logging()
+        self.logger = logger
         self.client = WebSocketClient(self.logger)
         self.command_builder = CommandBuilder()
         self._devices: Dict[str, Device] = {}

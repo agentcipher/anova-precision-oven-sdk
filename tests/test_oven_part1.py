@@ -34,9 +34,8 @@ def mock_client():
 @pytest.fixture
 def mock_logger():
     """Mock logger."""
-    with patch('anova_oven_sdk.oven.setup_logging') as mock:
-        logger_instance = Mock()
-        mock.return_value = logger_instance
+    logger_instance = Mock()
+    with patch('anova_oven_sdk.oven.logger', logger_instance):
         yield logger_instance
 
 
