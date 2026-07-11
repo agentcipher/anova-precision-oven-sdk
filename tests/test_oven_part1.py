@@ -3,10 +3,41 @@ from unittest.mock import Mock, AsyncMock, patch
 
 from anova_oven_sdk.oven import AnovaOven
 from anova_oven_sdk.models import (
-    Device, OvenVersion, Temperature, CookStage,
+    Device, DeviceState, OvenVersion, Temperature, CookStage,
     TemperatureMode
 )
 from anova_oven_sdk.exceptions import ConfigurationError, DeviceNotFoundError
+
+# Minimal valid `nodes` payload satisfying Nodes' required sub-fields, reused
+# by tests that need a validating nodes-only EVENT_APO_STATE update.
+NODES_FIXTURE = {
+    "temperatureBulbs": {
+        "mode": "dry",
+        "wet": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+        "dry": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+        "dryTop": {"current": {"celsius": 20.0, "fahrenheit": 68.0}},
+        "dryBottom": {"current": {"celsius": 20.0, "fahrenheit": 68.0}}
+    },
+    "timer": {"mode": "idle", "initial": 0, "current": 0},
+    "temperatureProbe": {"connected": False},
+    "steamGenerators": {
+        "mode": "idle",
+        "relativeHumidity": {"current": 0},
+        "evaporator": {},
+        "boiler": {}
+    },
+    "heatingElements": {
+        "top": {"on": False, "failed": False, "watts": 0},
+        "bottom": {"on": False, "failed": False, "watts": 0},
+        "rear": {"on": False, "failed": False, "watts": 0}
+    },
+    "fan": {"speed": 0, "failed": False},
+    "vent": {"open": False},
+    "waterTank": {"empty": False},
+    "door": {"closed": True},
+    "lamp": {"on": False, "failed": False, "preference": "on"},
+    "userInterfaceCircuit": {"communicationFailed": False}
+}
 
 
 @pytest.fixture
@@ -356,6 +387,116 @@ class TestAnovaOvenHandleMessage:
         # Nodes should remain None
         assert device.nodes is None
 
+    def test_handle_message_nodes_only_update_preserves_active_cook(
+        self, mock_settings, mock_client, mock_logger
+    ):
+        """A nodes-only EVENT_APO_STATE push (no cook data) must not clear
+        an already-active cook session -- see Fix 1.1."""
+        oven = AnovaOven()
+
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+
+        # First update: cook starts (flat/V2 fallback cook fields at the
+        # top level of payload, alongside state.mode="cooking").
+        start_payload = {
+            "cookerId": "test-123",
+            "state": {"mode": "cooking", "temperatureUnit": "F"},
+            "cookId": "cook-abc-123",
+            "stages": [{"id": "stage-1", "title": "Sear"}],
+        }
+        oven._handle_message({"command": "EVENT_APO_STATE", "payload": start_payload})
+
+        assert device.state == DeviceState.COOKING
+        assert device.cook is not None
+        assert device.cook.cook_id == "cook-abc-123"
+
+        # Second update: pure telemetry, no `state` and no cook fields at
+        # all -- this is the "nodes-only" push that used to wipe device.cook.
+        telemetry_payload = {
+            "cookerId": "test-123",
+            "nodes": NODES_FIXTURE,
+        }
+        oven._handle_message({"command": "EVENT_APO_STATE", "payload": telemetry_payload})
+
+        # Cook session and cooking state must survive the telemetry-only update.
+        assert device.cook is not None
+        assert device.cook.cook_id == "cook-abc-123"
+        assert device.state == DeviceState.COOKING
+        # But the telemetry itself was still applied.
+        assert device.nodes is not None
+
+    def test_handle_message_nodes_only_update_preserves_paused_cook(
+        self, mock_settings, mock_client, mock_logger
+    ):
+        """A nodes-only update while paused must also preserve the cook session."""
+        oven = AnovaOven()
+
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+
+        start_payload = {
+            "cookerId": "test-123",
+            "state": {"mode": "paused", "temperatureUnit": "F"},
+            "cookId": "cook-abc-123",
+            "stages": [{"id": "stage-1", "title": "Sear"}],
+        }
+        oven._handle_message({"command": "EVENT_APO_STATE", "payload": start_payload})
+
+        assert device.state == DeviceState.PAUSED
+        assert device.cook is not None
+
+        telemetry_payload = {
+            "cookerId": "test-123",
+            "nodes": NODES_FIXTURE,
+        }
+        oven._handle_message({"command": "EVENT_APO_STATE", "payload": telemetry_payload})
+
+        assert device.cook is not None
+        assert device.state == DeviceState.PAUSED
+        assert device.nodes is not None
+
+    def test_handle_message_cook_cleared_once_idle(self, mock_settings, mock_client, mock_logger):
+        """Once the oven genuinely reports a non-cooking mode with no cook
+        data, the stale cook session should be cleared."""
+        oven = AnovaOven()
+
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+
+        start_payload = {
+            "cookerId": "test-123",
+            "state": {"mode": "cooking", "temperatureUnit": "F"},
+            "cookId": "cook-abc-123",
+            "stages": [{"id": "stage-1", "title": "Sear"}],
+        }
+        oven._handle_message({"command": "EVENT_APO_STATE", "payload": start_payload})
+        assert device.cook is not None
+
+        idle_payload = {
+            "cookerId": "test-123",
+            "state": {"mode": "idle", "temperatureUnit": "F"},
+        }
+        oven._handle_message({"command": "EVENT_APO_STATE", "payload": idle_payload})
+
+        assert device.state == DeviceState.IDLE
+        assert device.cook is None
+
     def test_handle_message_apo_state_fallback_single_device(self, mock_settings, mock_client, mock_logger):
         """Test handling APO state event with fallback to single device."""
         oven = AnovaOven()
@@ -663,6 +804,52 @@ class TestAnovaOvenStartCook:
         })
         assert device.total_stage_count == 3
         assert device.current_stage_index == 2
+
+    @pytest.mark.asyncio
+    async def test_start_cook_returns_cook_id(self, mock_settings, mock_client, mock_logger):
+        """start_cook() should return the generated cook_id so callers can
+        track which cook session a recipe start corresponds to."""
+        oven = AnovaOven()
+
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+
+        with patch.object(oven.command_builder, 'build_start_command') as mock_build:
+            mock_build.return_value = {
+                "payload": {
+                    "cookId": "cook-xyz-789",
+                    "stages": [{"id": "stage-1", "title": "Sear"}],
+                }
+            }
+
+            result = await oven.start_cook("test-123", temperature=200, duration=1800)
+
+        assert result == "cook-xyz-789"
+
+    @pytest.mark.asyncio
+    async def test_start_cook_returns_none_when_no_cook_id(self, mock_settings, mock_client, mock_logger):
+        """start_cook() should return None if the built payload has no cookId."""
+        oven = AnovaOven()
+
+        device = Device(
+            cookerId="test-123",
+            name="Test Oven",
+            pairedAt="2024-01-01T00:00:00Z",
+            type=OvenVersion.V2
+        )
+        oven._devices["test-123"] = device
+
+        with patch.object(oven.command_builder, 'build_start_command') as mock_build:
+            mock_build.return_value = {"payload": {}}
+
+            result = await oven.start_cook("test-123", temperature=200, duration=1800)
+
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_start_cook_device_not_found(self, mock_settings, mock_client, mock_logger):

@@ -1,5 +1,13 @@
 # Changelog
 
+## [2026.07.2]
+- Fixed `Device.cook` being silently cleared by "nodes-only" `EVENT_APO_STATE` telemetry updates (no cook data included) while a cook was genuinely still active -- previously any such update would revert an in-progress cook session to `None` within seconds of it starting. `device.cook` is now only cleared once the device's mode has actually left `COOKING`/`PREHEATING`/`PAUSED`
+- `AnovaOven.start_cook()` now returns the generated `cook_id` for the started cook session (previously always returned `None`), so callers can track which session a given start corresponds to
+
+## [2026.07.1]
+- Logging now follows standard library conventions: each module uses `logging.getLogger(__name__)` and no longer configures its own level or handlers. Previously `setup_logging()` reconfigured the `anova_oven` logger (clearing handlers, forcing a level) on every `AnovaOven()` instantiation, which clobbered logging configuration in host applications like Home Assistant. The logger hierarchy root is now `anova_oven_sdk`. `logging_config.py` now only exposes `TokenMaskingFilter`
+- Fixed `WebSocketClient` never attempting to reconnect after the first failed attempt following a dropped connection -- `_reconnect()` now retries indefinitely with exponential backoff (capped at 60s) until reconnection succeeds or the client is explicitly disconnected
+
 ## [2026.06.2]
 - Fixed `Device.cook` never being populated for V1 ovens
 - For V1 ovens, `Device.current_stage`, `Device.current_stage_index`, and `Device.total_stage_count` are now derived directly from `cook.active_stage_index` and `cook.stages` -- `register_cook_plan`/`stages[0]`-based resolution remains as a fallback for V2 ovens, where this nested `cook` shape is unconfirmed

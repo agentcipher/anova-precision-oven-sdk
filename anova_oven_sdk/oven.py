@@ -8,8 +8,8 @@ from typing import Optional, List, Dict, Any, Union
 from .exceptions import ConfigurationError, DeviceNotFoundError
 from .commands import CommandBuilder
 from .client import WebSocketClient
-from .models import Device, CookStage, OvenVersion, Probe, Temperature, TimerStartType, Timer, HeatingElements, \
-    TemperatureMode, ensure_temperature
+from .models import Device, CookStage, DeviceState, OvenVersion, Probe, Temperature, TimerStartType, Timer, \
+    HeatingElements, TemperatureMode, ensure_temperature
 from .response_models import DeviceListResponse, ApoStateResponse, CommandResponse, ErrorResponse
 from .logging_config import TokenMaskingFilter
 from .utils import get_masked_token
@@ -212,7 +212,6 @@ class AnovaOven:
 
                         # Update device.state enum based on mode
                         if oven_state.mode:
-                            from .models import DeviceState
                             mode = oven_state.mode.lower()
                             state_mapping = {
                                 "cook": DeviceState.COOKING,
@@ -231,8 +230,23 @@ class AnovaOven:
                     if system_info:
                         device.system_info = system_info
 
-                    # Update cook session data
-                    device.cook = cook
+                    # Update cook session data.
+                    #
+                    # Must NOT be assigned unconditionally like the fields
+                    # above. The server sends frequent "nodes-only"
+                    # EVENT_APO_STATE pushes (temperature telemetry) that
+                    # omit cook info entirely -- those payloads resolve
+                    # `cook` to None here, and unconditionally overwriting
+                    # device.cook with that None would silently erase a
+                    # still-active cook session within seconds of it
+                    # starting. Only clear it once device.state has
+                    # actually left COOKING/PREHEATING/PAUSED.
+                    if cook is not None:
+                        device.cook = cook
+                    elif device.state not in (
+                        DeviceState.COOKING, DeviceState.PREHEATING, DeviceState.PAUSED
+                    ):
+                        device.cook = None
 
                     # Update timestamp
                     device.last_update = datetime.now()
@@ -286,7 +300,7 @@ class AnovaOven:
             duration: Optional[int] = None,
             wait_for_response: bool = False,
             **kwargs
-    ) -> None:
+    ) -> Optional[str]:
         """
         Start cooking with flexible temperature input.
 
@@ -298,6 +312,10 @@ class AnovaOven:
             duration: Duration in seconds
             wait_for_response: Wait for API response confirmation
             **kwargs: Additional parameters
+
+        Returns:
+            The generated cook_id for this cook session, or None if the
+            outbound CMD_APO_START payload didn't include one.
 
         Examples:
             # Celsius (default)
@@ -385,6 +403,8 @@ class AnovaOven:
                 self.logger.info(f"✓ Started cook on {device.name} at {first_temp.fahrenheit:.1f}°F")
             else:
                 self.logger.info(f"✓ Started cook on {device.name} at {first_temp.celsius:.1f}°C")
+
+        return cook_id
 
     async def stop_cook(self, device_id: str) -> None:
         """Stop cooking."""
