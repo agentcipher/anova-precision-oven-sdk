@@ -1,6 +1,6 @@
 """Anova Precision Oven Python SDK"""
 
-__version__ = "2026.07.2"
+__version__ = "2026.07.3"
 
 # Import main classes for easy access
 from .oven import AnovaOven

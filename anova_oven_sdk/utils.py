@@ -7,6 +7,7 @@ from functools import wraps
 import asyncio
 from typing import Callable
 from .settings import settings
+from .exceptions import TimeoutError
 
 
 def generate_uuid() -> str:

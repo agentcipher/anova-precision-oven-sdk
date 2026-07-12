@@ -1,5 +1,12 @@
 # Changelog
 
+## [2026.07.3]
+- Reliability fix: commands sent while the server closes the connection mid-send (e.g. a load-balancer-imposed max connection age) no longer fail outright. `send_command()` now waits, bounded (`reconnect_wait`, default 5s), for the automatic reconnect already running in the background to land, then retries the send exactly once against the new connection. A sustained outage that doesn't reconnect within the bounded wait still raises `CommandError`, unchanged
+- Fixed connection/command failures being raised without being logged -- `send_command()` now logs the error via the SDK logger before raising `CommandError`/`TimeoutError`, so these failures are visible in application logs (e.g. Home Assistant) rather than only surfacing if the caller logs the exception itself
+- Fixed `ConnectionError`/`TimeoutError` in `client.py` and `TimeoutError` in `utils.py` resolving to Python's built-in exceptions instead of the SDK's own `anova_oven_sdk.exceptions` classes (missing imports) -- callers catching the SDK's typed exceptions specifically would never match
+- Fixed a race where `_connect_once()` could run concurrently (e.g. the background auto-reconnect loop racing an explicit `connect()` call from application code), both passing the `is_connected` check before either finished connecting, and each opening a duplicate WebSocket connection and receive-loop task. `_connect_once()`/`disconnect()` are now serialized with a lock
+- Fixed `disconnect()` returning immediately without stopping an in-progress automatic reconnect -- because `is_connected` is already `False` while `_reconnect()`'s background retry loop is running, calling `disconnect()` during an outage previously left that loop retrying forever instead of actually disconnecting
+
 ## [2026.07.2]
 - Fixed `Device.cook` being silently cleared by "nodes-only" `EVENT_APO_STATE` telemetry updates (no cook data included) while a cook was genuinely still active -- previously any such update would revert an in-progress cook session to `None` within seconds of it starting. `device.cook` is now only cleared once the device's mode has actually left `COOKING`/`PREHEATING`/`PAUSED`
 - `AnovaOven.start_cook()` now returns the generated `cook_id` for the started cook session (previously always returned `None`), so callers can track which session a given start corresponds to

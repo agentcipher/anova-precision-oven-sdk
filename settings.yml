@@ -9,6 +9,11 @@ default:
   connection_timeout: 30.0
   command_timeout: 10.0
   inactivity_timeout: 1800.0
+  # Bounded wait for an in-flight automatic reconnect to land before a
+  # command whose send failed due to a server-initiated connection close
+  # gives up (see WebSocketClient.send_command). Not a retry loop on its
+  # own -- _reconnect() does the actual backoff retrying in the background.
+  reconnect_wait: 5.0
 
   # Device settings
   supported_accessories:

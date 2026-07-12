@@ -6,6 +6,7 @@ from unittest.mock import Mock, AsyncMock, patch
 
 from anova_oven_sdk.client import WebSocketClient
 from anova_oven_sdk.exceptions import CommandError
+from websockets.exceptions import ConnectionClosed
 
 
 class MockWebSocket:
@@ -182,6 +183,69 @@ class TestWebSocketClient:
 
         with pytest.raises(Exception):  # ConnectionError
             await client.connect()
+
+    @pytest.mark.asyncio
+    @patch('anova_oven_sdk.client.websockets.connect')
+    @patch('anova_oven_sdk.client.settings')
+    async def test_concurrent_connect_once_does_not_duplicate_connection(
+        self, mock_settings, mock_ws_connect, client
+    ):
+        """Two concurrent _connect_once() calls (e.g. the background
+        _reconnect() loop racing an explicit connect() from application
+        code) must not both pass the is_connected check and each open a
+        separate WebSocket connection + receive task."""
+        mock_settings.ws_url = "wss://test.com"
+        mock_settings.token = "anova-test-token"
+        mock_settings.supported_accessories = ["APO"]
+        mock_settings.connection_timeout = 5
+
+        connect_calls = 0
+
+        async def slow_connect(*args, **kwargs):
+            nonlocal connect_calls
+            connect_calls += 1
+            await asyncio.sleep(0.05)
+            return MockWebSocket()
+
+        mock_ws_connect.side_effect = slow_connect
+
+        await asyncio.gather(client._connect_once(), client._connect_once())
+
+        assert connect_calls == 1
+        assert client.is_connected is True
+
+        # Cleanup
+        client._receive_task.cancel()
+        try:
+            await client._receive_task
+        except asyncio.CancelledError:
+            pass
+
+    @pytest.mark.asyncio
+    async def test_disconnect_stops_in_progress_reconnect(self, client):
+        """disconnect() must cancel an in-flight background reconnect loop
+        even though is_connected is already False while it's running --
+        not just return early and leave it retrying forever."""
+        reconnect_started = asyncio.Event()
+
+        async def fake_receive_loop():
+            # Simulate _receive_loop having already detected the drop and
+            # being stuck in _reconnect()'s indefinite retry loop.
+            client._connected = False
+            reconnect_started.set()
+            while True:
+                await asyncio.sleep(0.05)
+
+        task = asyncio.create_task(fake_receive_loop())
+        client._receive_task = task
+        client._connected = False
+        client._ws = None
+
+        await reconnect_started.wait()
+
+        await asyncio.wait_for(client.disconnect(), timeout=1.0)
+
+        assert task.done()
 
     @pytest.mark.asyncio
     async def test_disconnect_when_connected(self, client):
@@ -622,6 +686,90 @@ class TestWebSocketClient:
 
         await client.send_command("TEST_CMD", {}, timeout=5)
         mock_ws.send.assert_called_once()
+
+    @pytest.mark.asyncio
+    @patch('anova_oven_sdk.client.settings')
+    async def test_send_command_retries_after_reconnect(self, mock_settings, client):
+        """A ConnectionClosed mid-send should transparently retry once the
+        in-flight automatic reconnect lands, instead of raising."""
+        mock_settings.command_timeout = 10
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'auto_reconnect': True,
+            'reconnect_wait': 2.0,
+        }.get(key, default)
+
+        mock_ws = Mock()
+        call_count = 0
+
+        async def flaky_send(_message):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                client._connected = False
+                raise ConnectionClosed(None, None)
+
+        mock_ws.send = AsyncMock(side_effect=flaky_send)
+        client._ws = mock_ws
+        client._connected = True
+
+        async def simulate_reconnect():
+            await asyncio.sleep(0.05)
+            client._connected = True
+            client._reconnected_event.set()
+
+        asyncio.create_task(simulate_reconnect())
+
+        result = await client.send_command("TEST_CMD", {"data": "test"})
+
+        assert result is None
+        assert call_count == 2
+
+    @pytest.mark.asyncio
+    @patch('anova_oven_sdk.client.settings')
+    async def test_send_command_raises_when_reconnect_times_out(self, mock_settings, client):
+        """If the connection doesn't come back within the bounded wait, the
+        original error should still be raised -- no infinite retrying."""
+        mock_settings.command_timeout = 10
+        mock_settings.get.side_effect = lambda key, default=None: {
+            'auto_reconnect': True,
+            'reconnect_wait': 0.05,
+        }.get(key, default)
+
+        mock_ws = Mock()
+
+        async def always_closed(_message):
+            client._connected = False
+            raise ConnectionClosed(None, None)
+
+        mock_ws.send = AsyncMock(side_effect=always_closed)
+        client._ws = mock_ws
+        client._connected = True
+
+        with pytest.raises(CommandError):
+            await client.send_command("TEST_CMD", {"data": "test"})
+
+        # Only the original attempt -- no retry was made since reconnect
+        # never landed within the bounded wait.
+        assert mock_ws.send.call_count == 1
+
+    @pytest.mark.asyncio
+    @patch('anova_oven_sdk.client.settings')
+    async def test_send_command_non_connection_error_does_not_wait_for_reconnect(
+        self, mock_settings, client
+    ):
+        """Generic send failures (not a connection close) must not trigger
+        the reconnect-wait retry path -- only ConnectionClosed should."""
+        mock_settings.command_timeout = 10
+
+        mock_ws = Mock()
+        mock_ws.send = AsyncMock(side_effect=ValueError("boom"))
+        client._ws = mock_ws
+        client._connected = True
+
+        with patch.object(client, '_wait_for_reconnect', new_callable=AsyncMock) as mock_wait:
+            with pytest.raises(CommandError):
+                await client.send_command("TEST_CMD", {"data": "test"})
+            mock_wait.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_connect_creates_ssl_context_in_executor(self, client):
